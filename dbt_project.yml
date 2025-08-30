@@ -1,0 +1,12 @@
+name: finops
+version: 1.0
+profile: finops
+
+models:
+  finops:
+    +materialized: table
+
+vars:
+  COST_PER_CREDIT: "{{ env_var('COST_PER_CREDIT', 3.00) }}"
+  WINDOW_DAYS: "{{ env_var('WINDOW_DAYS', 90) }}"
+  READ_ROLE: "{{ env_var('READ_ROLE', 'DM_AE_ROLE') }}"
