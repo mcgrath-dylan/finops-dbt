@@ -1,12 +1,68 @@
-name: finops
-version: 1.0
-profile: finops
+name: 'snowflake_finops'
+version: '1.0.0'
+config-version: 2
 
-models:
-  finops:
-    +materialized: table
+profile: 'snowflake_finops'
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["data"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
 
 vars:
-  COST_PER_CREDIT: "{{ env_var('COST_PER_CREDIT', 3.00) }}"
-  WINDOW_DAYS: "{{ env_var('WINDOW_DAYS', 90) }}"
-  READ_ROLE: "{{ env_var('READ_ROLE', 'DM_AE_ROLE') }}"
+  # Cost Configuration - CRITICAL: fed from environment
+  cost_per_credit: "{{ env_var('COST_PER_CREDIT') }}"
+  
+  # Data Retention Windows (single knob)
+  query_history_days: "{{ env_var('WINDOW_DAYS') }}"
+  metering_history_days: "{{ env_var('WINDOW_DAYS') }}"
+  storage_history_days: "{{ env_var('WINDOW_DAYS') }}"
+  
+  # Thresholds
+  idle_threshold_seconds: 300  # 5 minutes
+  expensive_query_threshold_usd: 1.00
+  
+  # Roles & Access
+  read_role: 'ANALYST'
+  
+  # Source database
+  account_usage_database: 'SNOWFLAKE'
+  account_usage_schema: 'ACCOUNT_USAGE'
+
+models:
+  snowflake_finops:
+    staging:
+      +materialized: view
+      snowflake:
+        +schema: staging
+        
+    intermediate:
+      +materialized: incremental
+      +on_schema_change: fail
+      +schema: intermediate
+      
+    marts:
+      +materialized: table
+      +schema: marts
+      core:
+        +tags: ['core']
+      finance:
+        +tags: ['finance']
+      optimization:
+        +tags: ['optimization']
+
+seeds:
+  snowflake_finops:
+    +schema: reference_data
+    department_mapping:
+      +column_types:
+        role_name: varchar
+        department: varchar
+        cost_center: varchar
