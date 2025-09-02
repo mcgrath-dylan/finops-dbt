@@ -52,6 +52,16 @@ jobs:
         run: dbt build
 
       - name: Generate docs
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
+          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
         run: dbt docs generate
 
       - name: Upload docs as Pages artifact
