@@ -72,7 +72,7 @@ jobs:
           WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
         run: dbt seed --full-refresh
 
-      - name: dbt build (state:modified+)
+      - name: "dbt build (state:modified+)"
         if: ${{ steps.get_state.outputs.has_state == 'true' }}
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
@@ -86,7 +86,7 @@ jobs:
           WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
         run: dbt build --state state --select state:modified+
 
-      - name: dbt build (smoke: +fct_daily_costs)
+      - name: "dbt build (smoke: +fct_daily_costs)"
         if: ${{ steps.get_state.outputs.has_state != 'true' }}
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
