@@ -31,7 +31,7 @@ jobs:
       - name: Install dbt Core (Snowflake adapter)
         run: |
           python -m pip install --upgrade pip
-          pip install "dbt-snowflake~=1.10"
+          pip install -r requirements.txt
 
       - name: Install dbt packages
         run: dbt deps
