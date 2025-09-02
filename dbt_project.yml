@@ -39,30 +39,8 @@ vars:
 models:
   snowflake_finops:
     staging:
-      +materialized: view
-      snowflake:
-        +schema: staging
-        
+      +materialized: incremental
     intermediate:
       +materialized: incremental
-      +on_schema_change: fail
-      +schema: intermediate
-      
     marts:
       +materialized: table
-      +schema: marts
-      core:
-        +tags: ['core']
-      finance:
-        +tags: ['finance']
-      optimization:
-        +tags: ['optimization']
-
-seeds:
-  snowflake_finops:
-    +schema: reference_data
-    department_mapping:
-      +column_types:
-        role_name: varchar
-        department: varchar
-        cost_center: varchar
