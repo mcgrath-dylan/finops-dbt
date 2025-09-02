@@ -1,0 +1,71 @@
+name: dbt nightly (build + docs + pages)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 5 * * *'   # 05:00 UTC; ~00:00 Eastern; 01:00 ET during DST (adjust to preference as needed)
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+env:
+  DBT_PROFILES_DIR: ./.ci/profiles
+  PYTHONUTF8: "1"
+
+jobs:
+  build-and-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dbt Core (Snowflake adapter)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "dbt-snowflake~=1.10"
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: Build all (tests included)
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
+          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
+        run: dbt build
+
+      - name: Generate docs
+        run: dbt docs generate
+
+      - name: Upload docs as Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./target
+
+  deploy-pages:
+    needs: build-and-docs
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

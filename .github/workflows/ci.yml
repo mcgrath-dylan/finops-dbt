@@ -1,0 +1,75 @@
+name: dbt PR (state-aware)
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'models/**'
+      - 'packages.yml'
+      - 'dbt_project.yml'
+      - '.ci/**'
+      - '.github/workflows/**'
+
+env:
+  DBT_PROFILES_DIR: ./.ci/profiles
+  PYTHONUTF8: "1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dbt Core (Snowflake adapter)
+        run: |
+          python -m pip install --upgrade pip
+          pip install "dbt-snowflake~=1.10"
+
+      - name: Install dbt packages
+        run: dbt deps
+
+      - name: Try to fetch state manifest from GitHub Pages
+        id: fetch_state
+        shell: bash
+        run: |
+          set -e
+          mkdir -p state
+          OWNER_REPO="${GITHUB_REPOSITORY}"             # e.g. mcgrath-dylan/finops-dbt
+          OWNER="${OWNER_REPO%%/*}"
+          REPO="${OWNER_REPO##*/}"
+          URL="https://${OWNER}.github.io/${REPO}/manifest.json"
+          echo "Attempting to download: $URL"
+          if curl -fsSL "$URL" -o state/manifest.json ; then
+            echo "has_state=true" >> $GITHUB_OUTPUT
+          else
+            echo "No manifest found (first run?). Falling back to smoke build."
+            echo "has_state=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: dbt build (state:modified+) or smoke
+        shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
+          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
+        run: |
+          set -e
+          if [ "${{ steps.fetch_state.outputs.has_state }}" = "true" ]; then
+            dbt build --state state --select state:modified+
+          else
+            dbt build --select +fct_daily_costs
+          fi

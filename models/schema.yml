@@ -49,6 +49,11 @@ models:
   - name: int_hourly_compute_costs
     description: "Hourly costs from WAREHOUSE_METERING_HISTORY (authoritative)."
     columns:
+      - name: warehouse_name
+        tests:
+          - relationships:
+              to: ref('stg_warehouse_metering')
+              field: warehouse_name
       - name: cost_hour_key
         tests: [not_null, unique]
       - name: compute_cost_usd
@@ -68,6 +73,11 @@ models:
       - unique:
           column_name: daily_cost_key
     columns:
+      - name: warehouse_name
+        tests:
+          - relationships:
+              to: ref('stg_warehouse_metering')
+              field: warehouse_name
       - name: compute_cost
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
