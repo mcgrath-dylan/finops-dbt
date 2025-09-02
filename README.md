@@ -1,6 +1,7 @@
 # Snowflake FinOps (dbt) — Starter
 
 ![PR CI](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/ci.yml/badge.svg)
+![Nightly](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/nightly.yml/badge.svg?branch=main)
 
 **Docs & Lineage:** https://mcgrath-dylan.github.io/finops-dbt/
 
