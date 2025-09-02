@@ -20,6 +20,7 @@ jobs:
   build-and-docs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
+
     steps:
       - name: Checkout main
         uses: actions/checkout@v4
@@ -37,6 +38,19 @@ jobs:
 
       - name: Install dbt packages
         run: dbt deps
+
+      - name: Seed reference data
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
+          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
+        run: dbt seed --full-refresh
 
       - name: Build all (tests included)
         env:

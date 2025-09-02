@@ -14,4 +14,5 @@
 2. Install deps & run:
    ```bash
    dbt deps
+   dbt seed --full-refresh
    dbt build --select +fct_daily_costs
