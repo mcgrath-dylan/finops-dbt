@@ -60,7 +60,6 @@ jobs:
           fi
 
       - name: dbt seed (full-refresh)
-        shell: bash
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -74,8 +73,7 @@ jobs:
         run: dbt seed --full-refresh
 
       - name: dbt build (state:modified+)
-        if: steps.get_state.outputs.has_state == 'true'
-        shell: bash
+        if: ${{ steps.get_state.outputs.has_state == 'true' }}
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -89,8 +87,7 @@ jobs:
         run: dbt build --state state --select state:modified+
 
       - name: dbt build (smoke: +fct_daily_costs)
-        if: steps.get_state.outputs.has_state != 'true'
-        shell: bash
+        if: ${{ steps.get_state.outputs.has_state != 'true' }}
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
