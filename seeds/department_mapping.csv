@@ -1,0 +1,11 @@
+warehouse_name,department
+ANALYTICS_WH,Analytics
+FINOPS_WH,Finance
+CORE_ETL_WH,Data Platform
+BI_WH,Business Intelligence
+DS_SCIENCE_WH,Data Science
+APP_ENG_WH,App Engineering
+QA_TEST_WH,Quality Assurance
+SANDBOX_WH,Sandbox
+REPORTING_WH,Reporting
+MLOPS_WH,MLOps

@@ -5,10 +5,16 @@ on:
     branches: [ main ]
     paths:
       - 'models/**'
+      - 'seeds/**'
       - 'packages.yml'
       - 'dbt_project.yml'
       - '.ci/**'
       - '.github/workflows/**'
+      - 'requirements.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   DBT_PROFILES_DIR: ./.ci/profiles
@@ -18,6 +24,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
     steps:
       - name: Checkout PR
         uses: actions/checkout@v4
@@ -37,24 +44,22 @@ jobs:
         run: dbt deps
 
       - name: Try to fetch state manifest from GitHub Pages
-        id: fetch_state
+        id: get_state
         shell: bash
         run: |
           set -e
           mkdir -p state
-          OWNER_REPO="${GITHUB_REPOSITORY}"             # e.g. mcgrath-dylan/finops-dbt
-          OWNER="${OWNER_REPO%%/*}"
-          REPO="${OWNER_REPO##*/}"
-          URL="https://${OWNER}.github.io/${REPO}/manifest.json"
+          URL="https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/manifest.json"
           echo "Attempting to download: $URL"
-          if curl -fsSL "$URL" -o state/manifest.json ; then
-            echo "has_state=true" >> $GITHUB_OUTPUT
+          if curl -fsSL "$URL" -o state/manifest.json; then
+            echo "has_state=true"  >> "$GITHUB_OUTPUT"
+            echo "State manifest downloaded."
           else
-            echo "No manifest found (first run?). Falling back to smoke build."
-            echo "has_state=false" >> $GITHUB_OUTPUT
+            echo "has_state=false" >> "$GITHUB_OUTPUT"
+            echo "No manifest found (first run or docs not yet published)."
           fi
 
-      - name: dbt build (state:modified+) or smoke
+      - name: dbt seed (full-refresh)
         shell: bash
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
@@ -66,10 +71,34 @@ jobs:
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
           COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
           WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
-        run: |
-          set -e
-          if [ "${{ steps.fetch_state.outputs.has_state }}" = "true" ]; then
-            dbt build --state state --select state:modified+
-          else
-            dbt build --select +fct_daily_costs
-          fi
+        run: dbt seed --full-refresh
+
+      - name: dbt build (state:modified+)
+        if: steps.get_state.outputs.has_state == 'true'
+        shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
+          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
+        run: dbt build --state state --select state:modified+
+
+      - name: dbt build (smoke: +fct_daily_costs)
+        if: steps.get_state.outputs.has_state != 'true'
+        shell: bash
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
+          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
+        run: dbt build --select +fct_daily_costs

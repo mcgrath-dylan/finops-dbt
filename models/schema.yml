@@ -88,3 +88,62 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: 0
+  - name: cost_by_department
+    description: "Daily compute/idle/total $ by department. $ from metering (authoritative)."
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [department, usage_date]
+    columns:
+      - name: department
+        tests:
+          - relationships:
+              to: ref('department_mapping')
+              field: department
+      - name: total_cost_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+
+  - name: cost_trend
+    description: "7/30-day rolling totals by department."
+    columns:
+      - name: total_cost_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+
+  - name: budget_vs_actual
+    description: "Daily budgets vs actuals by department (optional; sample data)."
+    columns:
+      - name: variance_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: -1000000000  # variance can be negative
+
+seeds:
+  - name: department_mapping
+    description: "Maps Snowflake warehouse_name to a business department/team."
+    columns:
+      - name: warehouse_name
+        tests: [not_null, unique]
+      - name: department
+        tests: [not_null]
+
+  - name: budget_daily
+    description: "Daily spend budget per department (optional; sample data)."
+    columns:
+      - name: department
+        tests: [not_null]
+      - name: date
+        tests: [not_null]
+      - name: budget_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [department, date]
