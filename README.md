@@ -9,16 +9,24 @@
 **Truth for $:** `SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY`.  
 **Per-query $:** estimates only (attribution), clearly labeled.
 
+---
+
+## What’s in v0.5
+- **Baseline marts (authoritative $):** `fct_daily_costs`, `cost_by_department`, `cost_trend`.
+- **Pro Pack (optional, gated):** query-level $ attribution + warehouse optimization candidates.
+- **Read-only demo app:** `app/streamlit_app.py` (Streamlit) visualizes the marts; auto-detects Pro models if present.
+- **Docs/lineage exposure:** `models/exposures.yml` registers the app in dbt Docs.
+
+---
+
 ## Quickstart
-1. Set env vars (examples):  
-   `COST_PER_CREDIT`, `WINDOW_DAYS`, `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`
-2. Install deps & run:
-   dbt deps
-   dbt seed --full-refresh
-   dbt build --select +fct_daily_costs
 
-## Pro Pack (optional)
-Disabled by default. Enable locally:
-dbt build --vars '{enable_pro_pack: true}'   
+**Env vars (examples):**  
+`COST_PER_CREDIT`, `WINDOW_DAYS`, `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`
 
-Outputs are informational: per-query dollars are **ESTIMATES**; optimization tables list **candidates**, not savings. Authoritative dollars = ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY.
+**Install & build (baseline):**
+```bash
+dbt deps
+dbt seed --full-refresh
+dbt build
+dbt docs generate
