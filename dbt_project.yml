@@ -35,10 +35,12 @@ vars:
   # Source database
   account_usage_database: 'SNOWFLAKE'
   account_usage_schema: 'ACCOUNT_USAGE'
-  
-  # Enable premium features
-  enable_budget: true
 
+  enable_budget: true
+  enable_pro_pack: false
+  # Pro Pack thresholds (conservative defaults)
+  min_idle_pct_for_candidate: 0.25  # 25% idle dollars share
+  min_daily_cost_usd_for_candidate: 5  # avg daily $
 
 models:
   snowflake_finops:

@@ -2,7 +2,8 @@
     config(
         materialized='incremental',
         unique_key='query_id',
-        on_schema_change='fail'
+        on_schema_change='fail',
+        enabled=var('enable_pro_pack', false)
     )
 }}
 
