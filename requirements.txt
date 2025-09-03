@@ -1,1 +1,5 @@
 dbt-snowflake~=1.10
+streamlit==1.* 
+snowflake-connector-python==3.*
+pandas>=2.0
+python-dotenv>=1.0
