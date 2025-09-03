@@ -52,8 +52,9 @@ models:
       - name: warehouse_name
         tests:
           - relationships:
-              to: ref('stg_warehouse_metering')
-              field: warehouse_name
+              arguments:
+                to: ref('stg_warehouse_metering')
+                field: warehouse_name
       - name: cost_hour_key
         tests: [not_null, unique]
       - name: compute_cost_usd
@@ -76,8 +77,9 @@ models:
       - name: warehouse_name
         tests:
           - relationships:
-              to: ref('stg_warehouse_metering')
-              field: warehouse_name
+              arguments:
+                to: ref('stg_warehouse_metering')
+                field: warehouse_name
       - name: compute_cost
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
@@ -88,6 +90,7 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: 0
+
   - name: cost_by_department
     description: "Daily compute/idle/total $ by department. $ from metering (authoritative)."
     tests:
@@ -97,8 +100,9 @@ models:
       - name: department
         tests:
           - relationships:
-              to: ref('department_mapping')
-              field: department
+              arguments:
+                to: ref('department_mapping')
+                field: department
       - name: total_cost_usd
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
@@ -122,6 +126,37 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: -1000000000  # variance can be negative
+
+  # ----------------------
+  # Pro Pack (gated) staging — tests run only when enabled
+  # ----------------------
+  - name: stg_warehouse_events_history
+    description: "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY (informational). Pro Pack gated."
+    tests: []
+    columns:
+      - name: warehouse_name
+        tests: [not_null]
+      - name: event_ts
+        tests: [not_null]
+
+  - name: stg_automatic_clustering_history
+    description: "ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY (informational). Pro Pack gated."
+    tests: []
+    columns:
+      - name: database_name
+        tests: [not_null]
+      - name: schema_name
+        tests: [not_null]
+      - name: table_name
+        tests: [not_null]
+      - name: start_time
+        tests: [not_null]
+      - name: credits_used
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments:
+                min_value: 0
 
 seeds:
   - name: department_mapping
