@@ -11,6 +11,7 @@ on:
       - '.ci/**'
       - '.github/workflows/**'
       - 'requirements.txt'
+      - 'app/**'
   workflow_dispatch:
 
 permissions:
