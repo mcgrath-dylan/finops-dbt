@@ -13,7 +13,12 @@
 1. Set env vars (examples):  
    `COST_PER_CREDIT`, `WINDOW_DAYS`, `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_PASSWORD`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_WAREHOUSE`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_SCHEMA`
 2. Install deps & run:
-   ```bash
    dbt deps
    dbt seed --full-refresh
    dbt build --select +fct_daily_costs
+
+## Pro Pack (optional)
+Disabled by default. Enable locally:
+dbt build --vars '{enable_pro_pack: true}'   
+
+Outputs are informational: per-query dollars are **ESTIMATES**; optimization tables list **candidates**, not savings. Authoritative dollars = ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY.

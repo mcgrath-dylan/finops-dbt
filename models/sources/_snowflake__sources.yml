@@ -71,3 +71,7 @@ sources:
         loaded_at_field: TABLE_CREATED
       - name: AUTOMATIC_CLUSTERING_HISTORY
         loaded_at_field: END_TIME
+
+      # NEW (Pro Pack; informational)
+      - name: WAREHOUSE_EVENTS_HISTORY
+        loaded_at_field: END_TIME
