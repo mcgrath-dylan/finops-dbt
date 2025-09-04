@@ -69,27 +69,64 @@ models:
                 min_value: 0
 
   - name: fct_daily_costs
-    description: "Daily compute & idle cost by warehouse. $$ from metering history; query-level $$ are estimates only."
+    description: "Daily compute/idle/cloud-services/total cost by warehouse. $$ from metering history; query-level $$ are estimates only."
+    config:
+      contract:
+        enforced: true
     tests:
       - unique:
           column_name: daily_cost_key
     columns:
+      - name: usage_date
+        data_type: date
+        tests: [not_null]
       - name: warehouse_name
+        data_type: varchar
         tests:
           - relationships:
               arguments:
                 to: ref('stg_warehouse_metering')
                 field: warehouse_name
+      - name: compute_credits
+        data_type: number
       - name: compute_cost
+        data_type: number
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: 0
+      - name: cloud_services_cost
+        data_type: number
+      - name: total_cost
+        data_type: number
       - name: idle_cost
+        data_type: number
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: 0
+      - name: productive_cost
+        data_type: number
+      - name: total_queries
+        data_type: number
+      - name: avg_concurrent_users
+        data_type: number
+      - name: cost_per_query
+        data_type: number
+      - name: efficiency_score
+        data_type: number
+      - name: month_to_date_cost
+        data_type: number
+      - name: cost_7day_avg
+        data_type: number
+      - name: day_over_day_change
+        data_type: number
+      - name: week_over_week_change
+        data_type: number
+      - name: daily_cost_key
+        data_type: varchar
+      - name: _loaded_at
+        data_type: timestamp_ntz
 
   - name: cost_by_department
     description: "Daily compute/idle/total $ by department. $ from metering (authoritative)."
@@ -157,6 +194,13 @@ models:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments:
                 min_value: 0
+
+  # Lightweight staleness guard on metering feed
+  - name: freshness_check
+    description: "ACCOUNT_USAGE metering recentness guard (fails if older than 12h)."
+    tests:
+      - dbt_utils.expression_is_true:
+          expression: "datediff('hour', last_end_time, current_timestamp()) <= 12"
 
 seeds:
   - name: department_mapping
