@@ -100,3 +100,82 @@ jobs:
           COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
           WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
         run: dbt build --select +fct_daily_costs
+
+      # ---- Notification fan-out (safe if not configured) ----
+
+      - name: Detect notification channels
+        id: notify
+        if: always()
+        shell: bash
+        run: |
+          has_smtp=false
+          if [ -n "${{ secrets.SMTP_SERVER }}" ] && [ -n "${{ secrets.SMTP_PORT }}" ] && \
+             [ -n "${{ secrets.SMTP_USERNAME }}" ] && [ -n "${{ secrets.SMTP_PASSWORD }}" ] && \
+             [ -n "${{ secrets.ALERT_EMAIL_TO }}" ] && [ -n "${{ secrets.ALERT_EMAIL_FROM }}" ]; then
+            has_smtp=true
+          fi
+          echo "smtp=$has_smtp"   >> "$GITHUB_OUTPUT"
+
+          has_slack=false
+          if [ -n "${{ secrets.SLACK_WEBHOOK_URL }}" ]; then
+            has_slack=true
+          fi
+          echo "slack=$has_slack" >> "$GITHUB_OUTPUT"
+
+          has_teams=false
+          if [ -n "${{ secrets.TEAMS_WEBHOOK_URL }}" ]; then
+            has_teams=true
+          fi
+          echo "teams=$has_teams" >> "$GITHUB_OUTPUT"
+
+      - name: Notify by Email on failure
+        if: ${{ failure() && steps.notify.outputs.smtp == 'true' }}
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: ${{ secrets.SMTP_SERVER }}
+          server_port: ${{ secrets.SMTP_PORT }}
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "❌ dbt build failed on ${{ github.repository }}@${{ github.ref_name }}"
+          to: ${{ secrets.ALERT_EMAIL_TO }}
+          from: ${{ secrets.ALERT_EMAIL_FROM }}
+          content_type: text/plain
+          body: |
+            dbt build failed.
+            Repo: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Run: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Notify Slack on failure
+        if: ${{ failure() && steps.notify.outputs.slack == 'true' }}
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"❌ dbt build failed on *${{ github.repository }}* (branch: ${{ github.ref_name }}) — run ${{ github.run_id }}\"}" \
+            "$SLACK_WEBHOOK_URL"
+
+      - name: Notify Teams on failure
+        if: ${{ failure() && steps.notify.outputs.teams == 'true' }}
+        env:
+          TEAMS_WEBHOOK_URL: ${{ secrets.TEAMS_WEBHOOK_URL }}
+        run: |
+          payload=$(cat <<'JSON'
+          {
+            "@type": "MessageCard",
+            "@context": "http://schema.org/extensions",
+            "themeColor": "EA4300",
+            "summary": "dbt build failed",
+            "sections": [{
+              "activityTitle": "❌ dbt build failed",
+              "facts": [
+                {"name": "Repo",   "value": "${{ github.repository }}"},
+                {"name": "Branch", "value": "${{ github.ref_name }}"},
+                {"name": "Run",    "value": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"}
+              ],
+              "markdown": true
+            }]
+          }
+          JSON
+          )
+          curl -H 'Content-Type: application/json' -d "$payload" "$TEAMS_WEBHOOK_URL"

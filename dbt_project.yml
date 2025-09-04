@@ -43,6 +43,7 @@ vars:
   min_daily_cost_usd_for_candidate: 5  # avg daily $
 
 models:
+  on_schema_change: "{{ 'fail' if target.name == 'prod' else 'sync_all_columns' }}"
   snowflake_finops:
     staging:
       +materialized: incremental
