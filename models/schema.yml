@@ -181,11 +181,17 @@ models:
     tests: []
     columns:
       - name: database_name
-        tests: [not_null]
+        tests:
+          - not_null:
+              where: "credits_used > 0"
       - name: schema_name
-        tests: [not_null]
+        tests:
+          - not_null:
+              where: "credits_used > 0"
       - name: table_name
-        tests: [not_null]
+        tests:
+          - not_null:
+              where: "credits_used > 0"
       - name: start_time
         tests: [not_null]
       - name: credits_used

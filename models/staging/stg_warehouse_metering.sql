@@ -6,10 +6,10 @@
     )
 }}
 
--- Authoritative source for compute $: ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+-- Authoritative (ACCOUNT_USAGE) or Demo overlay via macro
 with source as (
     select *
-    from {{ source('account_usage', 'WAREHOUSE_METERING_HISTORY') }}
+    from {{ metering_relation() }}
     where START_TIME >= dateadd('day', -{{ var('metering_history_days') }}, current_date())
     {% if is_incremental() %}
       and date(END_TIME) >= (
@@ -31,7 +31,7 @@ normalized as (
         WAREHOUSE_ID,
         WAREHOUSE_NAME,
 
-        -- credits
+        -- credits (ACCOUNT_USAGE-compatible column names)
         CREDITS_USED                       as total_credits_used,
         CREDITS_USED_COMPUTE              as credits_used_compute,
         CREDITS_USED_CLOUD_SERVICES       as credits_used_cloud_services,
@@ -44,7 +44,7 @@ normalized as (
         -- stable unique key per warehouse-hour
         concat_ws('|', WAREHOUSE_ID::string, to_char(END_TIME, 'YYYY-MM-DD HH24:MI:SS')) as metering_id,
 
-        current_timestamp() as _loaded_at
+        cast(current_timestamp() as timestamp_ntz) as _loaded_at
     from source
 )
 
