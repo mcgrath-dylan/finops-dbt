@@ -5,7 +5,10 @@ packages:
   - name: dbt_expectations
     package: calogica/dbt_expectations
     version: 0.10.4
+  - git: https://github.com/mcgrath-dylan/snowflake-finops-pro.git
+    name: snowflake_finops_pro
+    revision: 9602f61554d542f81e975b2593463f7819640def
   - name: dbt_date
     package: calogica/dbt_date
     version: 0.10.1
-sha1_hash: 0b23f5fc5714988940cd94ee2302384d6240f8b5
+sha1_hash: e592bd0f1af9c1529d74275de46704ae3337d020

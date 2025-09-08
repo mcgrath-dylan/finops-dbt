@@ -1,6 +1,7 @@
 version: 2
 
 models:
+  # ---------- STARTER (public) ----------
   - name: stg_warehouse_metering
     description: "Windowed, incremental copy of ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY."
     tests:
@@ -18,13 +19,11 @@ models:
       - name: total_credits_used
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
       - name: total_cost_usd
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
 
   - name: stg_query_history
     description: "Windowed, incremental copy of ACCOUNT_USAGE.QUERY_HISTORY (successful, compute-bearing only)."
@@ -38,13 +37,11 @@ models:
       - name: gb_scanned
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
       - name: total_elapsed_seconds
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
 
   - name: int_hourly_compute_costs
     description: "Hourly costs from WAREHOUSE_METERING_HISTORY (authoritative)."
@@ -52,21 +49,17 @@ models:
       - name: warehouse_name
         tests:
           - relationships:
-              arguments:
-                to: ref('stg_warehouse_metering')
-                field: warehouse_name
+              arguments: {to: ref('stg_warehouse_metering'), field: warehouse_name}
       - name: cost_hour_key
         tests: [not_null, unique]
       - name: compute_cost_usd
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
       - name: idle_cost_usd
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
 
   - name: fct_daily_costs
     description: "Daily compute/idle/cloud-services/total cost by warehouse. $$ from metering history; query-level $$ are estimates only."
@@ -77,56 +70,34 @@ models:
       - unique:
           column_name: daily_cost_key
     columns:
-      - name: usage_date
-        data_type: date
+      - name: usage_date         # DATE
         tests: [not_null]
-      - name: warehouse_name
-        data_type: varchar
+      - name: warehouse_name     # VARCHAR
         tests:
           - relationships:
-              arguments:
-                to: ref('stg_warehouse_metering')
-                field: warehouse_name
+              arguments: {to: ref('stg_warehouse_metering'), field: warehouse_name}
       - name: compute_credits
-        data_type: number
       - name: compute_cost
-        data_type: number
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
       - name: cloud_services_cost
-        data_type: number
       - name: total_cost
-        data_type: number
       - name: idle_cost
-        data_type: number
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
       - name: productive_cost
-        data_type: number
       - name: total_queries
-        data_type: number
       - name: avg_concurrent_users
-        data_type: number
       - name: cost_per_query
-        data_type: number
       - name: efficiency_score
-        data_type: number
       - name: month_to_date_cost
-        data_type: number
       - name: cost_7day_avg
-        data_type: number
       - name: day_over_day_change
-        data_type: number
       - name: week_over_week_change
-        data_type: number
       - name: daily_cost_key
-        data_type: varchar
       - name: _loaded_at
-        data_type: timestamp_ntz
 
   - name: cost_by_department
     description: "Daily compute/idle/total $ by department. $ from metering (authoritative)."
@@ -137,14 +108,11 @@ models:
       - name: department
         tests:
           - relationships:
-              arguments:
-                to: ref('department_mapping')
-                field: department
+              arguments: {to: ref('department_mapping'), field: department}
       - name: total_cost_usd
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
 
   - name: cost_trend
     description: "7/30-day rolling totals by department."
@@ -152,8 +120,7 @@ models:
       - name: total_cost_usd
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
 
   - name: budget_vs_actual
     description: "Daily budgets vs actuals by department (optional; sample data)."
@@ -161,47 +128,9 @@ models:
       - name: variance_usd
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: -1000000000  # variance can be negative
+              arguments: {min_value: -1000000000}  # variance can be negative
 
-  # ----------------------
-  # Pro Pack (gated) staging — tests run only when enabled
-  # ----------------------
-  - name: stg_warehouse_events_history
-    description: "ACCOUNT_USAGE.WAREHOUSE_EVENTS_HISTORY (informational). Pro Pack gated."
-    tests: []
-    columns:
-      - name: warehouse_name
-        tests: [not_null]
-      - name: event_ts
-        tests: [not_null]
-
-  - name: stg_automatic_clustering_history
-    description: "ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY (informational). Pro Pack gated."
-    tests: []
-    columns:
-      - name: database_name
-        tests:
-          - not_null:
-              where: "credits_used > 0"
-      - name: schema_name
-        tests:
-          - not_null:
-              where: "credits_used > 0"
-      - name: table_name
-        tests:
-          - not_null:
-              where: "credits_used > 0"
-      - name: start_time
-        tests: [not_null]
-      - name: credits_used
-        tests:
-          - not_null
-          - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
-
-  # Lightweight staleness guard on metering feed
+  # Lightweight staleness guard on metering feed (optional)
   - name: freshness_check
     description: "ACCOUNT_USAGE metering recentness guard (fails if older than 12h)."
     tests:
@@ -227,8 +156,7 @@ seeds:
       - name: budget_usd
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
-              arguments:
-                min_value: 0
+              arguments: {min_value: 0}
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns: [department, date]
