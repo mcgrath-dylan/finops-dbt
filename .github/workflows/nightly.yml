@@ -36,6 +36,24 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      # NEW: keep Pro in packages.yml for local/demo;
+      # CI strips Pro unless PRO_GH_PAT is present.
+      - name: Prepare packages for CI (strip Pro if no token)
+        run: |
+          if [ -z "${{ secrets.PRO_GH_PAT }}" ]; then
+            echo "No PRO_GH_PAT detected; building Starter-only."
+            cp packages.yml packages.yml.orig
+            awk '
+              BEGIN{skip=0}
+              /^ *- +git: *"https:\/\/github\.com\/mcgrath-dylan\/snowflake-finops-pro\.git" */ {skip=1; next}
+              skip && /^ *revision:/ {skip=0; next}
+              {if(!skip) print}
+            ' packages.yml.orig > packages.yml
+          else
+            echo "PRO_GH_PAT found; enabling private Pro package."
+            git config --global url."https://${{ secrets.PRO_GH_PAT }}:@github.com/".insteadOf "https://github.com/"
+          fi
+
       - name: Install dbt packages
         run: dbt deps
 
