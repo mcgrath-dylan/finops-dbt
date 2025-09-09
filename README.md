@@ -30,10 +30,10 @@ A compact, credible **Snowflake spend** view built with **dbt Core** (Snowflake 
 
 > Images below show **Demo mode** with **Pro enabled** (for illustration). Numbers are sample data.
 
-<p align="center"><img src="app/screenshots/hero.png" alt="KPIs and controls" width="1100"></p>
+<p align="center"><img src="app/screenshots/hero.PNG" alt="KPIs and controls" width="1100"></p>
 <p align="center"><img src="app/screenshots/spend_by_department.png" alt="Spend by Department trend" width="1100"></p>
-<p align="center"><img src="app/screenshots/top_tables.png" alt="Top Departments and Top Warehouses" width="1100"></p>
-<p align="center"><img src="app/screenshots/pro_insights.png" alt="Pro Insights table" width="1100"></p>
+<p align="center"><img src="app/screenshots/top_tables.PNG" alt="Top Departments and Top Warehouses" width="1100"></p>
+<p align="center"><img src="app/screenshots/pro_insights.PNG" alt="Pro Insights table" width="1100"></p>
 
 ---
 
