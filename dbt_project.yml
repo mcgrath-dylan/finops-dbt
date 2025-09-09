@@ -40,6 +40,8 @@ vars:
   enable_budget: true
   enable_pro_pack: false
   DEMO_MODE: false
+  snowflake_finops_pro:
+    enable_pro_pack: true      # overrides var() inside the Pro package only
   
   # Pro Pack thresholds (conservative defaults)
   min_idle_pct_for_candidate: 0.25  # 25% idle dollars share

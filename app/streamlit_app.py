@@ -61,7 +61,6 @@ def clear_all_caches():
     except Exception: pass
     try: st.cache_resource.clear()
     except Exception: pass
-    # close session-scoped snowflake conns
     try:
         for k in list(st.session_state.keys()):
             if str(k).startswith("sf_conn::"):
@@ -239,7 +238,6 @@ st.markdown("""
 .kpi-title{font-size:.85rem;color:#c9d1d9;margin-bottom:4px}
 .kpi-value{font-size:1.4rem;font-weight:700}
 .muted{color:#9aa4af}
-.hero{font-size:1rem;margin:.5rem 0;color:#cbd5e1}
 .section-help{float:right;opacity:.9}
 </style>
 """, unsafe_allow_html=True)
@@ -262,10 +260,10 @@ with st.sidebar:
     if st.button("Clear app cache"):
         clear_all_caches(); st.success("Caches cleared.")
 
-# ---- header ---------------------------------------------------------------
+# ---- header --------------------------------------------------------------
 left, right = st.columns([2,1])
 with left:
-    st.markdown("## FinOps for Snowflake + dbt")
+    st.markdown("## FinOps for Snowflake + dbt")  # Title restored
     pill = '<span class="pill pill-demo">DEMO</span>' if demo_mode else '<span class="pill pill-live">LIVE</span>'
     st.markdown(pill, unsafe_allow_html=True)
 with right:
@@ -281,15 +279,21 @@ mtd_total = float(mtd_fct.get("total_cost", pd.Series([0.0])).sum()) if not mtd_
 forecast_month = (mtd_total / max(elapsed, 1)) * dim if mtd_total > 0 else 0.0
 forecast_month = max(forecast_month, mtd_total)
 
+# NEW: Idle wasted (last N days) from fct (works in Starter)
+if not fct.empty and "idle_cost" in fct.columns:
+    start_win = today - dt.timedelta(days=days_shown-1)
+    idle_wasted_last_n = float(
+        fct[(fct["usage_date"] >= start_win) & (fct["usage_date"] <= today)]["idle_cost"].sum()
+    )
+else:
+    idle_wasted_last_n = None
+
 monthly_budget = None
 if budget is not None and not budget.empty:
     month_mask = (budget["date"] >= first_day) & (budget["date"] <= first_day.replace(day=dim))
     monthly_budget = float(budget.loc[month_mask, "budget_usd"].sum())
 
 pro_hourly = load_pro_hourly_soft(demo_mode, days_shown) if enable_pro else pd.DataFrame()
-
-# recommendations
-recs: List[str] = []
 total_idle_est = None
 rightsizing_df = pd.DataFrame()
 if enable_pro and not pro_hourly.empty:
@@ -315,26 +319,12 @@ if enable_pro and not pro_hourly.empty:
             return f"Right-size to {down.title()}" if down else None
         return None
     dfp["rightsize_suggestion"] = dfp.apply(rightsize_reco, axis=1)
-    dfp["action_score"] = dfp["idle_month_est"]
-    dfp.loc[dfp["rightsize_suggestion"].notnull(),"action_score"] *= 1.1
-    for _, r in dfp.sort_values("action_score", ascending=False).head(2).iterrows():
-        wh = r["warehouse_name"]
-        recs.append(f"{r['rightsize_suggestion']} on {wh}" if pd.notnull(r.get("rightsize_suggestion")) else f"Schedule {wh} on weekends")
     rightsizing_df = dfp[["warehouse_name","avg_credits_per_active_hour","warehouse_size","rightsize_suggestion"]].copy()
 
-# hero
-if monthly_budget and monthly_budget > 0:
-    pct = (forecast_month - monthly_budget) / monthly_budget * 100.0
-    sign = "above" if pct > 0 else "under"
-    main_line = f"You’re on track to spend <b>{fmt_usd(forecast_month)}</b> this month (<b>{abs(pct):.0f}%</b> {sign} budget)."
-else:
-    main_line = f"You’re on track to spend <b>{fmt_usd(forecast_month)}</b> this month."
-st.markdown(f'<div class="hero">{main_line}</div>', unsafe_allow_html=True)
-if total_idle_est is not None: st.markdown(f'<div class="hero">About <b>{fmt_usd(total_idle_est)}/mo</b> looks idle.</div>', unsafe_allow_html=True)
-if recs: st.markdown(f'<div class="hero">Do this next: ' + ' • '.join(recs) + '.</div>', unsafe_allow_html=True)
+# ---- KPIs: 2×2 grid ------------------------------------------------------
+row1 = st.columns(2)
+row2 = st.columns(2)
 
-# KPIs
-k1,k2,k3 = st.columns(3)
 def kpi(container, title, value, note=""):
     with container:
         st.markdown('<div class="kpi">', unsafe_allow_html=True)
@@ -342,13 +332,22 @@ def kpi(container, title, value, note=""):
         st.markdown(f'<div class="kpi-value">{value}</div>', unsafe_allow_html=True)
         if note: st.caption(note)
         st.markdown('</div>', unsafe_allow_html=True)
-kpi(k1, "Month-to-date spend", fmt_usd(mtd_total), f"Through {today.strftime('%b %d')} of a {dim}-day month")
-kpi(k2, "Forecast (month)", fmt_usd(forecast_month), "Based on current pace")
-kpi(k3, "Idle (est., monthly)", fmt_usd(total_idle_est) if total_idle_est is not None else "—", "From Pro (informational)")
+
+kpi(row1[0], "Month-to-date Spend", fmt_usd(mtd_total), f"Through {today.strftime('%b %d')} of a {dim}-day month")
+kpi(row1[1], "Forecast (month)", fmt_usd(forecast_month), "Based on current pace")
+
+kpi(row2[0], f"Idle Wasted (last {days_shown} days)",
+    fmt_usd(idle_wasted_last_n) if idle_wasted_last_n is not None else "—",
+    "Sum of idle cost over the last N days")
+
+kpi(row2[1], "Idle (projected, month)",
+    fmt_usd(total_idle_est) if total_idle_est is not None else "—",
+    "From Pro hourly model (scaled)" if total_idle_est is not None else "Turn on Pro insights to see this")
+
 st.divider()
 
-# Spend by department (chart)
-st.markdown(f'### Spend by department <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
+# ---- Spend by department (chart) -----------------------------------------
+st.markdown(f'### Spend by Department <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
 deps = sorted(dept["department"].unique()) if ("department" in dept and not dept.empty) else []
 sel_key = f"sel_depts_{active_schema(demo_mode)}"
 default_sel: List[str] = st.session_state.get(sel_key, deps)
@@ -371,7 +370,7 @@ else:
     st.info("No department data.")
 st.divider()
 
-# budget delta helper
+# ---- Budget deltas helper & Top tables -----------------------------------
 def compute_budget_delta_window(days: int) -> pd.DataFrame:
     if budget is None or budget.empty:
         return pd.DataFrame(columns=["department","budget_window_usd"])
@@ -381,7 +380,6 @@ def compute_budget_delta_window(days: int) -> pd.DataFrame:
     return bd.rename(columns={"budget_usd":"budget_window_usd"})
 budget_win = compute_budget_delta_window(days_shown)
 
-# top tables
 def render_top_table(title: str, df: pd.DataFrame, key_col: str, value_col: str, add_budget=False):
     st.markdown(f'### {title} <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
     st.caption(f"Spend over the last {days_shown} days")
@@ -420,21 +418,32 @@ def render_top_table(title: str, df: pd.DataFrame, key_col: str, value_col: str,
 
 L,R = st.columns(2)
 with L:
-    render_top_table("Top departments",
+    render_top_table("Top Departments",
         dept[(dept["usage_date"] >= today - dt.timedelta(days=days_shown-1)) & (dept["usage_date"] <= today)] if not dept.empty else pd.DataFrame(),
         "department","total_cost_usd", add_budget=True)
 with R:
-    render_top_table("Top warehouses",
+    render_top_table("Top Warehouses",
         fct[(fct["usage_date"] >= today - dt.timedelta(days=days_shown-1)) & (fct["usage_date"] <= today)] if not fct.empty else pd.DataFrame(),
         "warehouse_name","total_cost", add_budget=False)
 st.divider()
 
-# pro pack
-st.markdown(f'### Pro Pack insights <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
-st.caption("Idle hours = compute credits burned with no queries. Dollars are estimates; fix = reduce idle hours via autosuspend/schedules.")
+# ---- Pro Pack -------------------------------------------------------------
+st.markdown(f'### Pro Pack Insights <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
+with st.expander("How these numbers are computed", expanded=False):
+    st.markdown(
+        f"""
+- **Projected idle** = month-to-date hourly idle cost scaled to a 30-day month.  
+- **Wasted idle** = sum of hourly idle cost over the last **{days_shown}** days.  
+- **Idle** = compute credits burned with no queries.  
+- **Authoritative $** = Compute + Cloud Services.
+        """
+    )
+
+st.caption("")
+
 if enable_pro:
     if pro_hourly.empty:
-        st.caption("Pro models/hourly table not found in this schema or no data in window.")
+        st.info("Pro models/hourly table not found in this schema or no data in window.")
         show_for_export = pd.DataFrame()
     else:
         pdf = pro_hourly.copy()
@@ -457,64 +466,67 @@ if enable_pro:
         )
         show_for_export = pdf.rename(columns={"warehouse_name":"name"})[["name","Idle $/mo (est.)","Idle share (%)","rightsize_suggestion"]]\
                               .sort_values("Idle $/mo (est.)", ascending=False)
-        show_actions = st.toggle("Show change-set actions", False, help="Copy-ready SQL for autosuspend recommendations")
-        if show_actions:
-            current = load_current_warehouses()
-            sql_lines = []
-            for _, r in show.iterrows():
-                wh = str(r["Warehouse"]).upper()
+
+        # build actions first; only show toggle if there are real changes
+        current = load_current_warehouses()
+        sql_lines, notes = [], []
+        for _, r in show.iterrows():
+            wh = str(r["Warehouse"]).upper()
+            rec = None
+            try:
+                rec = rightsizing_df.loc[rightsizing_df["warehouse_name"].str.upper()==wh, "rightsize_suggestion"].iloc[0]
+            except Exception:
                 rec = None
-                try:
-                    rec = rightsizing_df.loc[rightsizing_df["warehouse_name"].str.upper()==wh, "rightsize_suggestion"].iloc[0]
-                except Exception:
-                    rec = None
-                if rec:
-                    st.write(f"**{wh}** — {rec}. Change size in Snowsight or via Terraform/IaC policy.")
-                else:
-                    idle_share = float(show.loc[show["Warehouse"]==r["Warehouse"], "Idle share (%)"].iloc[0])
-                    mins = 5 if idle_share >= 40 else 10
-                    target_sec = mins*60
-                    cur_meta = current.get(wh, {})
-                    current_sec = cur_meta.get("auto_suspend")
-                    current_disp = (f"{int(current_sec/60)} min" if current_sec and current_sec>=60 else (f"{current_sec} sec" if current_sec else "—"))
-                    st.write(f"**{wh}** — Current: {current_disp} → Target: {mins} min")
-                    sql = f"ALTER WAREHOUSE {wh} SET AUTO_SUSPEND = {target_sec};"
-                    sql_lines.append(sql)
-                    st.code(sql, language="sql")
-            if sql_lines:
-                st.download_button("Download autosuspend SQL", "\n".join(sql_lines).encode("utf-8"), file_name="autosuspend_changes.sql", mime="text/plain")
+            if rec:
+                notes.append(f"**{wh}** — {rec}. Change size in Snowsight or via Terraform/IaC policy.")
+                continue
+            idle_share = float(show.loc[show["Warehouse"]==r["Warehouse"], "Idle share (%)"].iloc[0])
+            mins = 5 if idle_share >= 40 else 10
+            target_sec = mins*60
+            cur_meta = current.get(wh, {})
+            current_sec = cur_meta.get("auto_suspend")
+            if current_sec != target_sec:
+                current_disp = (f"{int(current_sec/60)} min" if current_sec and current_sec>=60 else (f"{current_sec} sec" if current_sec else "—"))
+                notes.append(f"**{wh}** — Current: {current_disp} → Target: {mins} min")
+                sql_lines.append(f"ALTER WAREHOUSE {wh} SET AUTO_SUSPEND = {target_sec};")
+
+        if sql_lines or notes:
+            show_actions = st.toggle("Show change-set actions", False, help="Only shows changes when target differs from current setting")
+            if show_actions:
+                for n in notes: st.write(n)
+                if sql_lines:
+                    st.code("\n".join(sql_lines), language="sql")
+                    st.download_button("Download autosuspend SQL", "\n".join(sql_lines).encode("utf-8"),
+                                       file_name="autosuspend_changes.sql", mime="text/plain")
 else:
+    st.info("Pro insights are locked. Subscribe to **Pro** to see projected idle and warehouse-level insights.")
     show_for_export = pd.DataFrame()
 
 st.divider()
 
-# -------- FIXED: robust insights CSV (no missing-column KeyErrors) ----------
+# -------- Insights CSV -----------------------------------------------------
 def build_insights_csv() -> pd.DataFrame:
     expected = ["scope","name","window_spend_usd","idle_usd_month_est","idle_share_pct","suggested_action","vs_budget_pct"]
 
-    # Departments (window spend + vs budget)
     dep = dept[(dept["usage_date"] >= today - dt.timedelta(days=days_shown-1)) & (dept["usage_date"] <= today)] if not dept.empty else pd.DataFrame()
     if not dep.empty:
         depg = dep.groupby("department", as_index=False)["total_cost_usd"].sum().rename(columns={"department":"name","total_cost_usd":"window_spend_usd"})
-        if not budget_win.empty:
+        if budget_win.empty:
+            depg["vs_budget_pct"] = np.nan
+        else:
             depg = depg.merge(budget_win.rename(columns={"department":"name"}), on="name", how="left")
             depg["vs_budget_pct"] = np.where(depg["budget_window_usd"]>0, (depg["window_spend_usd"]-depg["budget_window_usd"])/depg["budget_window_usd"]*100.0, np.nan)
-        else:
-            depg["vs_budget_pct"] = np.nan
         depg["scope"] = "department"
     else:
         depg = pd.DataFrame(columns=["scope","name","window_spend_usd","vs_budget_pct"])
 
-    # Warehouses (window spend + idle + action)
     wh = fct[(fct["usage_date"] >= today - dt.timedelta(days=days_shown-1)) & (fct["usage_date"] <= today)] if not fct.empty else pd.DataFrame()
     if not wh.empty:
         whg = wh.groupby("warehouse_name", as_index=False)["total_cost"].sum().rename(columns={"warehouse_name":"name","total_cost":"window_spend_usd"})
         if isinstance(show_for_export, pd.DataFrame) and not show_for_export.empty:
             whg = whg.merge(show_for_export.rename(columns={"Idle $/mo (est.)":"idle_usd_month_est","Idle share (%)":"idle_share_pct"}), on="name", how="left")
         else:
-            whg["idle_usd_month_est"] = np.nan
-            whg["idle_share_pct"] = np.nan
-
+            whg["idle_usd_month_est"] = np.nan; whg["idle_share_pct"] = np.nan
         def action_row(r):
             if pd.notnull(r.get("rightsize_suggestion")): return r["rightsize_suggestion"]
             if pd.notnull(r.get("idle_share_pct")):
@@ -522,12 +534,10 @@ def build_insights_csv() -> pd.DataFrame:
                 return "Schedule weekends" if v>=70 else ("Auto-suspend 5 min" if v>=40 else ("Auto-suspend 10 min" if v>=20 else ""))
             return ""
         whg["suggested_action"] = whg.apply(action_row, axis=1)
-        whg["scope"] = "warehouse"
-        whg["vs_budget_pct"] = np.nan
+        whg["scope"] = "warehouse"; whg["vs_budget_pct"] = np.nan
     else:
         whg = pd.DataFrame(columns=["scope","name","window_spend_usd","idle_usd_month_est","idle_share_pct","suggested_action","vs_budget_pct"])
 
-    # Ensure all columns exist, then order
     for df in (depg, whg):
         for col in expected:
             if col not in df.columns:
@@ -537,10 +547,10 @@ def build_insights_csv() -> pd.DataFrame:
 
 insights_df = build_insights_csv()
 if not insights_df.empty:
-    st.download_button("Download insights CSV", data=insights_df.to_csv(index=False).encode("utf-8"), file_name="finops_insights.csv", mime="text/csv")
+    st.download_button("Download insights CSV", data=insights_df.to_csv(index=False).encode("utf-8"),
+                       file_name="finops_insights.csv", mime="text/csv")
 
-# footer / freshness
-st.markdown("<div style='text-align:right'><span class='muted'>Authoritative $ = Compute + Cloud Services. Idle is informational (hourly no-query heuristic).</span></div>", unsafe_allow_html=True)
+# ---- Freshness (sidebar) --------------------------------------------------
 with st.sidebar:
     if not fresh.empty and "last_end_time" in fresh.columns and pd.notnull(fresh.iloc[0]["last_end_time"]):
         try:
