@@ -245,7 +245,7 @@ st.markdown("""
 # ---- sidebar --------------------------------------------------------------
 with st.sidebar:
     st.subheader("Environment")
-    demo_mode = st.toggle("Demo mode", True)
+    demo_mode = st.toggle("Demo Mode", True)
     if "last_demo" not in st.session_state: st.session_state.last_demo = demo_mode
     if st.session_state.last_demo != demo_mode:
         clear_all_caches(); st.session_state.last_demo = demo_mode
@@ -256,14 +256,15 @@ with st.sidebar:
     st.subheader("Controls")
     days_shown = st.slider("Days shown", 7, 90, 30, 1)
     rows_to_show = st.slider("Rows to show", 3, 15, 8, 1)
-    enable_pro = st.toggle("Pro insights", True)
+    enable_pro = st.toggle("Pro Insights", True)
+    st.caption("Controls affect tiles, charts, and tables.")
     if st.button("Clear app cache"):
         clear_all_caches(); st.success("Caches cleared.")
 
 # ---- header --------------------------------------------------------------
 left, right = st.columns([2,1])
 with left:
-    st.markdown("## FinOps for Snowflake + dbt")  # Title restored
+    st.markdown("## FinOps for Snowflake + dbt")
     pill = '<span class="pill pill-demo">DEMO</span>' if demo_mode else '<span class="pill pill-live">LIVE</span>'
     st.markdown(pill, unsafe_allow_html=True)
 with right:
@@ -427,15 +428,16 @@ with R:
         "warehouse_name","total_cost", add_budget=False)
 st.divider()
 
-# ---- Pro Pack -------------------------------------------------------------
-st.markdown(f'### Pro Pack Insights <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
-with st.expander("How these numbers are computed", expanded=False):
+# ---- Pro -------------------------------------------------------------
+st.markdown(f'### Pro Insights <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
+with st.expander("How these numbers are computed?", expanded=False):
     st.markdown(
         f"""
-- **Projected idle** = month-to-date hourly idle cost scaled to a 30-day month.  
-- **Wasted idle** = sum of hourly idle cost over the last **{days_shown}** days.  
-- **Idle** = compute credits burned with no queries.  
-- **Authoritative $** = Compute + Cloud Services.
+- **Source of truth:** `ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY` (Compute + Cloud Services).  
+- **Forecast (month):** prorates month-to-date run rate to a 30-day month.  
+- **Idle wasted (last {days_shown}):** sum of hourly idle cost over the last **{days_shown}** days.  
+- **Idle projected (monthly, Pro):** month-to-date hourly idle scaled to 30 days.  
+- **Notes:** per-warehouse/attribution figures are estimates; authoritative spend comes from metering history.
         """
     )
 
@@ -499,7 +501,7 @@ if enable_pro:
                     st.download_button("Download autosuspend SQL", "\n".join(sql_lines).encode("utf-8"),
                                        file_name="autosuspend_changes.sql", mime="text/plain")
 else:
-    st.info("Pro insights are locked. Subscribe to **Pro** to see projected idle and warehouse-level insights.")
+    st.info("Upgrade to **Pro** for projected idle (monthly) and warehouse-level opportunities.")
     show_for_export = pd.DataFrame()
 
 st.divider()
@@ -552,7 +554,10 @@ if not insights_df.empty:
 
 # ---- Freshness (sidebar) --------------------------------------------------
 with st.sidebar:
-    if not fresh.empty and "last_end_time" in fresh.columns and pd.notnull(fresh.iloc[0]["last_end_time"]):
+    if demo_mode:
+        st.caption("**Freshness:** Not available in demo")
+        st.caption("**Last build:** Not available in demo")
+    elif not fresh.empty and "last_end_time" in fresh.columns and pd.notnull(fresh.iloc[0]["last_end_time"]):
         try:
             last = pd.to_datetime(fresh.iloc[0]["last_end_time"])
             if last.tzinfo is None: last = last.tz_localize("UTC")
@@ -563,4 +568,4 @@ with st.sidebar:
             st.caption("**Freshness:** —")
     else:
         st.caption("**Freshness:** —")
-    st.caption("**Last build:** —")
+        st.caption("**Last build:** —")

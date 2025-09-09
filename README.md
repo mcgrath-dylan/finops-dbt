@@ -1,141 +1,67 @@
-# FinOps for Snowflake + dbt (**Starter v1.0.0**)
+# FinOps for Snowflake + dbt (Starter v1.0.0)
 
-![CI](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/ci.yml/badge.svg)
-![Nightly](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/nightly.yml/badge.svg?branch=main)
-
-A plug & play app to analyze Snowflake spend with dbt, powered by a small Streamlit app for quick visual insights.
-
-- **Authoritative $**: derived from `SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY`
-- **Clear labeling**: per-query/attribution numbers are estimates and displayed as such
-- **Pro-ready**: detects an optional private **Pro** package when installed; otherwise shows an upgrade card
-
-> **Docs & Lineage:** published via dbt Docs (exposure listed in `models/exposures.yml`).
+A compact, credible **Snowflake spend** view built with **dbt Core** (Snowflake adapter) and a lightweight **Streamlit** app.  
+**Starter** is public; an optional private **Pro** add-on unlocks deeper idle modeling and warehouse-level opportunities.
 
 ---
 
 ## What you get
 
-- **Models (Starter)**  
-  - `stg_*` staging from ACCOUNT_USAGE  
-  - `marts/fct_daily_costs.sql` – authoritative daily spend  
-  - `marts/cost_by_department.sql` – department mapping & window totals  
-  - `marts/cost_trend.sql` – daily trend for charts  
-  - (Optional) `marts/budget_vs_actual.sql` – if budgets are seeded
+**Starter (this repo)**
 
-- **Streamlit App** (`app/streamlit_app.py`)
-  - **Hero (2×2)**: Month-to-date Spend, Forecast (month), **Idle Wasted (last N days)**, **Idle Projected (month)**  
-    - *Idle Wasted* and *Idle Projected* appears only if the Pro package is installed; otherwise an upgrade card is shown.  
-  - **Spend by Department** & **Top Warehouses** with tidy, consistent labels  
-  - **Download insights CSV** button
+- **Month-to-date spend** — authoritative, from `SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY`
+- **Forecast (month)** — prorates the current run rate to a 30-day month
+- **Idle wasted (last N days)** — historical sum of hourly idle cost over the last **N** days
+- **Spend by Department** (trend)
+- **Top Departments** and **Top Warehouses** (last N days)
+- **Download insights CSV** (department/warehouse + spend last N + idle $/mo + suggested action)
 
-- **Docs/Exposure**  
-  - `models/exposures.yml` registers the app in dbt Docs/Lineage
+**Pro (optional, licensed)**
 
----
+- **Idle projected (monthly)** KPI (from the hourly model, scaled)
+- **Pro Insights** table: per-warehouse **Idle $/mo (display)** and **Idle share %**
+- **Change-set actions** toggle: suggest autosuspend updates and simple rightsizing hints
 
-## Quickstart
-
-### 1) Requirements
-- Python 3.11+
-- dbt Core with Snowflake adapter (tested on dbt-core 1.10.x, snowflake-adapter 1.10.x)
-- A Snowflake account with access to `ACCOUNT_USAGE` (or use Demo mode)
-
-### 2) Configure Snowflake (profiles.yml)
-Create a `profiles.yml` entry named `finops_dbt` (standard dbt location), for example:
-```yaml
-finops_dbt:
-  target: dev
-  outputs:
-    dev:
-      type: snowflake
-      account: <acct>
-      user: <user>
-      password: <password>
-      role: <role>
-      database: <database>
-      warehouse: <warehouse>
-      schema: <schema>
-````
-
-### 3) Install & build
-
-```bash
-# from repo root
-dbt deps
-dbt seed --full-refresh        # loads demo/budget/mapping seeds if present
-dbt build                      # builds starter models
-dbt docs generate              # optional: build docs
-```
-
-### 4) Run the app
-
-```bash
-# from repo root
-streamlit run app/streamlit_app.py
-```
-
-Use the left-hand **Controls** to set **Days shown** and **Rows to show**.
-Toggle **Demo mode** if you want to explore the app without hitting your Snowflake account.
+> All $ values are estimates except the “authoritative” spend derived from **Warehouse Metering History** (Compute + Cloud Services).
 
 ---
 
-## Pro Pack (optional, licensed)
+## Screenshots
 
-The **Starter** works on its own. If you license the **Pro** package:
+> Images below show **Demo mode** with **Pro enabled** (for illustration). Numbers are sample data.
 
-* You’ll receive access to a **private Git repo** containing additional models (e.g., hourly idle model, optimization candidates, fine-grained attribution).
-* Add it to `packages.yml` in the starter and run `dbt deps`. The app auto-detects Pro models and enables **Pro Pack insights** and the **Idle (projected, month)** KPI.
-* The starter repo does not expose Pro internals. Contact the author for access and pricing.
-
----
-
-## Configuration & Data
-
-* **Authoritative spend** = Compute + (optionally) Cloud Services; calculated from `WAREHOUSE_METERING_HISTORY`.
-* **Department mapping** (optional) = `seeds/department_mapping.csv` (customize to your org).
-* **Budgets** (optional) = `seeds/budget_daily.csv` (customize to your org).
-* **Demo data** = `seeds/metering_demo_seed.csv` for local exploration without Snowflake.
-
-**Environment knobs in the app**
-
-* **Days shown** (slider) – default 30, adjustable from 7 up to 90
-* **Rows to show** – limits table lengths for readability (e.g. number of departments, warehouses visible)
-* **Demo mode** – bypasses live queries and uses cached/demo data
+<p align="center"><img src="app/screenshots/hero.png" alt="KPIs and controls" width="1100"></p>
+<p align="center"><img src="app/screenshots/spend_by_department.png" alt="Spend by Department trend" width="1100"></p>
+<p align="center"><img src="app/screenshots/top_tables.png" alt="Top Departments and Top Warehouses" width="1100"></p>
+<p align="center"><img src="app/screenshots/pro_insights.png" alt="Pro Insights table" width="1100"></p>
 
 ---
 
-## CI / CD
+## Architecture at a glance
 
-* **CI** (`.github/workflows/ci.yml`): basic dbt parse/build checks on PRs
-* **Nightly** (`.github/workflows/nightly.yml`): scheduled `dbt build` for drift detection
-
----
-
-## Troubleshooting
-
-* If you recently added the Pro package, run:
-
-  ```bash
-  dbt clean && dbt deps
-  ```
-* If a model complains about timestamp types in staging: drop/recreate the staging relation or run a full refresh of the affected seed/demo models.
-* To trace credentials/profile use:
-
-  ```bash
-  dbt debug
-  ```
+- **Warehouse sources**: `SNOWFLAKE.ACCOUNT_USAGE` (metering/events).  
+- **dbt**: staging → intermediates → marts; tests and docs generated in CI.  
+- **App**: Streamlit reads the marts, renders KPIs/tables, and exports an insights CSV.  
+- **CI/Docs**: Nightly `dbt build` + GitHub Pages for dbt docs (public).
 
 ---
 
-## Roadmap (starter)
+## Starter vs Pro
 
-* Small visual polish passes (spacing, empty-state cards)
-* Optional budget deltas chip per department
-* Additional export formats (Parquet)
+| Capability | Starter | Pro |
+|---|:--:|:--:|
+| Month-to-date spend (authoritative) | ✅ | ✅ |
+| Forecast (month) | ✅ | ✅ |
+| **Idle wasted (last N days)** | ✅ | ✅ |
+| **Idle projected (monthly)** |  | ✅ |
+| Pro Insights table (Idle $/mo, Idle %) |  | ✅ |
+| Change-set actions (autosuspend SQL, hints) |  | ✅ |
 
 ---
 
-## License & Contact
+## Docs & contact
 
-Starter is open for portfolio/demo purposes. Pro is licensed separately.
-Questions, licensing, or support: **[mcgrath.fintech@gmail.com](mailto:mcgrath.fintech@gmail.com)**
+- dbt docs / lineage: published via GitHub Pages.  
+- Questions, feedback, or Pro licensing: **mcgrath.fintech@gmail.com**
+
+> Interested in a guided walk-through or a customized build for your environment? Reach out! I would be happy to tailor the app to your needs.
