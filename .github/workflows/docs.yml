@@ -10,27 +10,32 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
-      SNOWFLAKE_ACCOUNT: dummy
-      SNOWFLAKE_USER: dummy
-      SNOWFLAKE_PASSWORD: dummy
-      SNOWFLAKE_ROLE: dummy
-      SNOWFLAKE_WAREHOUSE: dummy
-      SNOWFLAKE_DATABASE: dummy
-      SNOWFLAKE_SCHEMA: dummy
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+
+      # Use repo secrets; if missing, fall back to harmless defaults so parse won’t explode.
+      WINDOW_DAYS: ${{ secrets.WINDOW_DAYS || '30' }}
+      COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT || '3.00' }}
+
+      # Real Snowflake creds are REQUIRED for `dbt docs generate` (it connects to build the catalog)
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Configure Git auth for private Pro package
-        if: env.PRO_REPO_TOKEN != ''
-        run: |
-          git config --global url."https://${{ env.PRO_REPO_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        run: git config --global url."https://${{ env.PRO_REPO_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.11'
 
       - name: Install dbt
         run: pip install "dbt-snowflake~=1.10"
@@ -38,26 +43,30 @@ jobs:
       - name: dbt deps
         run: dbt deps
 
+      # OPTIONAL real build step
+      - name: Optional — dbt build on Snowflake
+        if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
+        run: dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' --fail-fast
+
       - name: Build Base docs (Pro OFF)
         run: |
           dbt parse
-          dbt docs generate --target-path target/base             --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
+          dbt docs generate --target-path target/base \
+            --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
           mkdir -p site/base && cp -r target/base/* site/base/
 
       - name: Build Pro docs (Pro ON)
         run: |
-          dbt docs generate --target-path target/pro             --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
+          dbt docs generate --target-path target/pro \
+            --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
           mkdir -p site/pro && cp -r target/pro/* site/pro/
 
       - name: Add site index
         run: |
           mkdir -p site
           cat > site/index.html <<'HTML'
-          <!doctype html>
-          <meta charset="utf-8">
-          <title>finops-dbt docs</title>
+          <!doctype html><meta charset="utf-8"><title>finops-dbt docs</title>
           <h1>finops-dbt docs</h1>
-          <p>Select a docs build:</p>
           <ul>
             <li><a href="base/index.html">Base (Starter)</a></li>
             <li><a href="pro/index.html">Pro (Starter + Pro Pack)</a></li>
