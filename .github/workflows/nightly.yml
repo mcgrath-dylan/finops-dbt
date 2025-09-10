@@ -24,30 +24,36 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure Git auth for private Pro package
-        if: env.PRO_REPO_TOKEN != ''
+        if: ${{ env.PRO_REPO_TOKEN != '' }}
         run: git config --global url."https://${{ env.PRO_REPO_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.11" }
-      - run: pip install "dbt-snowflake~=1.10"
-      - run: dbt deps
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dbt
+        run: pip install "dbt-snowflake~=1.10"
+
+      - name: dbt deps
+        run: dbt deps
 
       - name: Optional — dbt build on Snowflake
-        if: env.SNOWFLAKE_ACCOUNT != ''
+        if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
         run: dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' --fail-fast
 
       - name: Build Base docs
         run: |
           dbt parse
-          dbt docs generate --target-path target/base \
-            --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
-          mkdir -p site/base && cp -r target/base/* site/base/
+          dbt docs generate --target-path target/base --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
+          mkdir -p site/base
+          cp -r target/base/* site/base/
 
       - name: Build Pro docs
         run: |
-          dbt docs generate --target-path target/pro \
-            --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
-          mkdir -p site/pro && cp -r target/pro/* site/pro/
+          dbt docs generate --target-path target/pro --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
+          mkdir -p site/pro
+          cp -r target/pro/* site/pro/
 
       - name: Add site index
         run: |
