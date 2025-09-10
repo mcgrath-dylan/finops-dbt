@@ -8,7 +8,7 @@ with daily as (
         total_cost_usd,
         compute_cost_usd,
         idle_cost_usd
-    from {{ ref('cost_by_department') }}
+    from {{ ref('fct_cost_by_department') }}
 )
 select
     usage_date,

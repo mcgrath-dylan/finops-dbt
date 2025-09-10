@@ -44,8 +44,8 @@ normalized as (
         -- stable unique key per warehouse-hour
         concat_ws('|', WAREHOUSE_ID::string, to_char(END_TIME, 'YYYY-MM-DD HH24:MI:SS')) as metering_id,
 
-        -- keep LTZ (matches existing table + ACCOUNT_USAGE semantics)
-        cast(current_timestamp() as timestamp_ltz) as _loaded_at
+        -- cast to ntz for stability downstream
+        cast(current_timestamp() as timestamp_ntz) as _loaded_at
     from source
 )
 

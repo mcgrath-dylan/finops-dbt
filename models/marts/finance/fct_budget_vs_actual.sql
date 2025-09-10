@@ -6,7 +6,7 @@ with actuals as (
         usage_date,
         department,
         total_cost_usd as actual_usd
-    from {{ ref('cost_by_department') }}
+    from {{ ref('fct_cost_by_department') }}
 ),
 budgets as (
     select
