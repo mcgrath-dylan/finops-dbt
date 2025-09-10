@@ -43,7 +43,7 @@ jobs:
       - name: dbt deps
         run: dbt deps
 
-      # OPTIONAL real build step
+      # OPTIONAL real build step; skip if you don’t want it.
       - name: Optional — dbt build on Snowflake
         if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
         run: dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' --fail-fast
