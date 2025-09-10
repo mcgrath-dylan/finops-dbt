@@ -11,6 +11,10 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+      # Pull from secrets; if empty/unset, fall back to safe defaults for docs.
+      WINDOW_DAYS: ${{ secrets.WINDOW_DAYS || '30' }}
+      COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT || '3.00' }}
+      
       # Optional Snowflake creds; leave unset to skip build
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
