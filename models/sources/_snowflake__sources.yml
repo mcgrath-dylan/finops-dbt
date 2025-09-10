@@ -2,76 +2,16 @@ version: 2
 
 sources:
   - name: account_usage
-    description: Snowflake Account Usage schema - source of truth for costs
+    description: Snowflake Account Usage schema — source of truth for compute costs
     database: "{{ var('account_usage_database', 'SNOWFLAKE') }}"
     schema: "{{ var('account_usage_schema', 'ACCOUNT_USAGE') }}"
-    
-    # Define freshness expectations
     freshness:
       warn_after: {count: 6, period: hour}
       error_after: {count: 24, period: hour}
-    
     tables:
       - name: WAREHOUSE_METERING_HISTORY
-        description: Actual credit consumption by warehouse - THE source of truth for compute costs
+        description: Authoritative credits by warehouse/hour
         loaded_at_field: END_TIME
-        columns:
-          - name: START_TIME
-            description: Start of the hour
-          - name: END_TIME
-            description: End of the hour
-          - name: WAREHOUSE_ID
-            description: Internal warehouse ID
-          - name: WAREHOUSE_NAME
-            description: User-facing warehouse name
-          - name: CREDITS_USED
-            description: Total credits consumed in this hour
-          - name: CREDITS_USED_COMPUTE
-            description: Credits for compute
-          - name: CREDITS_USED_CLOUD_SERVICES
-            description: Credits for cloud services
-            
       - name: QUERY_HISTORY
-        description: All queries executed - use for patterns, not direct costs
-        loaded_at_field: END_TIME
-        columns:
-          - name: QUERY_ID
-            description: Unique query identifier
-          - name: QUERY_TEXT
-            description: SQL text
-          - name: DATABASE_NAME
-          - name: SCHEMA_NAME
-          - name: QUERY_TYPE
-            description: SELECT, INSERT, UPDATE, etc.
-          - name: WAREHOUSE_NAME
-          - name: WAREHOUSE_SIZE
-          - name: USER_NAME
-          - name: ROLE_NAME
-          - name: START_TIME
-          - name: END_TIME
-          - name: TOTAL_ELAPSED_TIME
-            description: Total time in milliseconds
-          - name: EXECUTION_TIME
-            description: Execution time in milliseconds
-          - name: QUEUED_PROVISIONING_TIME
-          - name: QUEUED_REPAIR_TIME
-          - name: QUEUED_OVERLOAD_TIME
-          - name: COMPILATION_TIME
-          - name: BYTES_SCANNED
-          - name: ROWS_PRODUCED
-          - name: EXECUTION_STATUS
-            description: SUCCESS, FAIL, INCIDENT
-
-      # (remaining storage-related tables unchanged)
-      - name: STORAGE_USAGE
-        loaded_at_field: USAGE_DATE
-      - name: DATABASE_STORAGE_USAGE_HISTORY
-        loaded_at_field: USAGE_DATE
-      - name: TABLE_STORAGE_METRICS
-        loaded_at_field: TABLE_CREATED
-      - name: AUTOMATIC_CLUSTERING_HISTORY
-        loaded_at_field: END_TIME
-
-      # NEW (Pro Pack; informational)
-      - name: WAREHOUSE_EVENTS_HISTORY
+        description: Query metadata for patterns (not $$)
         loaded_at_field: END_TIME

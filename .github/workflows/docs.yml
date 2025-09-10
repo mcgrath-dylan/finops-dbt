@@ -1,0 +1,71 @@
+name: Build & Publish dbt Docs (Base & Pro)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    env:
+      DBT_PROFILES_DIR: ./.ci/profiles
+      SNOWFLAKE_ACCOUNT: dummy
+      SNOWFLAKE_USER: dummy
+      SNOWFLAKE_PASSWORD: dummy
+      SNOWFLAKE_ROLE: dummy
+      SNOWFLAKE_WAREHOUSE: dummy
+      SNOWFLAKE_DATABASE: dummy
+      SNOWFLAKE_SCHEMA: dummy
+      PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Git auth for private Pro package
+        if: env.PRO_REPO_TOKEN != ''
+        run: |
+          git config --global url."https://${{ env.PRO_REPO_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dbt
+        run: pip install "dbt-snowflake~=1.10"
+
+      - name: dbt deps
+        run: dbt deps
+
+      - name: Build Base docs (Pro OFF)
+        run: |
+          dbt parse
+          dbt docs generate --target-path target/base             --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
+          mkdir -p site/base && cp -r target/base/* site/base/
+
+      - name: Build Pro docs (Pro ON)
+        run: |
+          dbt docs generate --target-path target/pro             --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
+          mkdir -p site/pro && cp -r target/pro/* site/pro/
+
+      - name: Add site index
+        run: |
+          mkdir -p site
+          cat > site/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>finops-dbt docs</title>
+          <h1>finops-dbt docs</h1>
+          <p>Select a docs build:</p>
+          <ul>
+            <li><a href="base/index.html">Base (Starter)</a></li>
+            <li><a href="pro/index.html">Pro (Starter + Pro Pack)</a></li>
+          </ul>
+          HTML
+
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site

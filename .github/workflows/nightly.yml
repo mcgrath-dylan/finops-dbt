@@ -1,113 +1,74 @@
-name: dbt nightly (build + docs + pages)
+name: Nightly — dbt Docs (Base & Pro) + optional Build
 
 on:
-  workflow_dispatch:
   schedule:
     - cron: '0 5 * * *'  # ~00:00 Eastern (05:00 UTC; 01:00 ET during DST)
-  push:
-    branches: [ main ]
-
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-env:
-  DBT_PROFILES_DIR: ./.ci/profiles
-  PYTHONUTF8: "1"
+  workflow_dispatch:
 
 jobs:
-  build-and-docs:
+  nightly:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    env:
+      DBT_PROFILES_DIR: ./.ci/profiles
+      PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+      # Optional Snowflake creds; leave unset to skip build
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
 
     steps:
-      - name: Checkout main
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Configure Git auth for private Pro package
+        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        run: git config --global url."https://${{ env.PRO_REPO_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
-      - name: Install dbt Core (snowflake adapter)
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+      - name: Install dbt
+        run: pip install "dbt-snowflake~=1.10"
 
-      # NEW: keep Pro in packages.yml for local/demo;
-      # CI strips Pro unless PRO_GH_PAT is present.
-      - name: Prepare packages for CI (strip Pro if no token)
-        run: |
-          if [ -z "${{ secrets.PRO_GH_PAT }}" ]; then
-            echo "No PRO_GH_PAT detected; building Starter-only."
-            cp packages.yml packages.yml.orig
-            awk '
-              BEGIN{skip=0}
-              /^ *- +git: *"https:\/\/github\.com\/mcgrath-dylan\/snowflake-finops-pro\.git" */ {skip=1; next}
-              skip && /^ *revision:/ {skip=0; next}
-              {if(!skip) print}
-            ' packages.yml.orig > packages.yml
-          else
-            echo "PRO_GH_PAT found; enabling private Pro package."
-            git config --global url."https://${{ secrets.PRO_GH_PAT }}:@github.com/".insteadOf "https://github.com/"
-          fi
-
-      - name: Install dbt packages
+      - name: dbt deps
         run: dbt deps
 
-      - name: Seed reference data
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
-          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
-          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
-        run: dbt seed --full-refresh
+      - name: Optional — dbt build on Snowflake
+        if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
+        run: dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' --fail-fast
 
-      - name: Build all (tests included)
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
-          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
-          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
-        run: dbt build
+      - name: Build Base docs
+        run: |
+          dbt parse
+          dbt docs generate --target-path target/base --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
+          mkdir -p site/base
+          cp -r target/base/* site/base/
 
-      - name: Generate docs
-        env:
-          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
-          COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT }}
-          WINDOW_DAYS: ${{ secrets.WINDOW_DAYS }}
-        run: dbt docs generate
+      - name: Build Pro docs
+        run: |
+          dbt docs generate --target-path target/pro --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
+          mkdir -p site/pro
+          cp -r target/pro/* site/pro/
 
-      - name: Upload docs as Pages artifact
-        uses: actions/upload-pages-artifact@v3
+      - name: Add site index
+        run: |
+          mkdir -p site
+          cat > site/index.html <<'HTML'
+          <!doctype html><meta charset="utf-8"><title>finops-dbt docs</title>
+          <h1>finops-dbt docs</h1>
+          <ul>
+            <li><a href="base/index.html">Base (Starter)</a></li>
+            <li><a href="pro/index.html">Pro (Starter + Pro Pack)</a></li>
+          </ul>
+          HTML
+
+      - name: Publish to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: ./target
-
-  deploy-pages:
-    needs: build-and-docs
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site

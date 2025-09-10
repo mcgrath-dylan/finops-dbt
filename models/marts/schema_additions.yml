@@ -1,0 +1,25 @@
+version: 2
+
+models:
+  - name: dim_department
+    description: "Seed-backed department dimension (clean names)."
+    columns:
+      - name: department
+        tests: [not_null]
+      - name: warehouse_name
+        tests: [not_null]
+
+  - name: fct_cost_by_department
+    description: "Daily compute/idle/total $ aggregated by department (authoritative $ from metering)."
+    columns:
+      - name: department
+        tests:
+          - relationships:
+              to: ref('dim_department')
+              field: department
+
+  - name: fct_cost_trend
+    description: "Rolling 7/30-day totals by department for trend analysis."
+
+  - name: fct_budget_vs_actual
+    description: "Daily budgets vs. actuals by department (enabled via var('enable_budget'))."

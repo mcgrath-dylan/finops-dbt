@@ -1,5 +1,5 @@
 name: 'snowflake_finops'
-version: '1.0.0'
+version: '1.1.0'
 config-version: 2
 
 profile: 'snowflake_finops'
@@ -50,6 +50,7 @@ vars:
 models:
   on_schema_change: "{{ 'fail' if target.name == 'prod' else 'sync_all_columns' }}"
   snowflake_finops:
+    +tags: ["pack:base"]
     staging:
       +materialized: incremental
     intermediate:
