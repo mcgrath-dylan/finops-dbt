@@ -7,17 +7,23 @@ models:
         tests:
           - name: not_null
           - name: unique
+
   - name: fct_cost_by_department
     columns:
       - name: department
         tests:
           - name: not_null
+          - name: relationships
+            arguments:
+              to: ref('dim_department')
+              field: department
       - name: usage_date
         tests:
           - name: not_null
       - name: total_cost_usd
         tests:
           - name: not_null
+
   - name: fct_budget_vs_actual
     columns:
       - name: usage_date
