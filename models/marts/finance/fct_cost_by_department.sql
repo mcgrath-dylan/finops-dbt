@@ -1,6 +1,5 @@
 {{ config(materialized='table') }}
 
--- Daily compute+idle+total $ by department (authoritative $ from metering)
 with base as (
     select
         f.usage_date,

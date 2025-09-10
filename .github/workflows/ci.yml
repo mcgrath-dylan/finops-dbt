@@ -10,7 +10,8 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
-      # Optional Snowflake creds; leave unset to skip build
+      WINDOW_DAYS: ${{ secrets.WINDOW_DAYS || '30' }}
+      COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT || '3.00' }}
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -42,7 +43,7 @@ jobs:
 
       - name: Generate Base docs
         run: |
-          dbt docs generate --target-path target/base --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
+          dbt docs generate --target-path target/base             --vars "{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}"
       - uses: actions/upload-artifact@v4
         with:
           name: dbt-docs-base
@@ -50,7 +51,7 @@ jobs:
 
       - name: Generate Pro docs
         run: |
-          dbt docs generate --target-path target/pro --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
+          dbt docs generate --target-path target/pro             --vars "{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}"
       - uses: actions/upload-artifact@v4
         with:
           name: dbt-docs-pro
@@ -58,4 +59,5 @@ jobs:
 
       - name: Optional — run dbt build on Snowflake
         if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
-        run: dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' --fail-fast
+        run: |
+          dbt build --vars "{"enable_pro_pack": false, "DEMO_MODE": false}" --fail-fast

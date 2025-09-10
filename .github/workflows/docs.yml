@@ -11,12 +11,8 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
-
-      # Use repo secrets; if missing, fall back to harmless defaults so parse won’t explode.
       WINDOW_DAYS: ${{ secrets.WINDOW_DAYS || '30' }}
       COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT || '3.00' }}
-
-      # Real Snowflake creds are REQUIRED for `dbt docs generate` (it connects to build the catalog)
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -43,23 +39,23 @@ jobs:
       - name: dbt deps
         run: dbt deps
 
-      # OPTIONAL real build step; skip if you don’t want it.
       - name: Optional — dbt build on Snowflake
         if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
-        run: dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' --fail-fast
+        run: |
+          dbt build --vars "{"enable_pro_pack": false, "DEMO_MODE": false}" --fail-fast
 
       - name: Build Base docs (Pro OFF)
         run: |
           dbt parse
-          dbt docs generate --target-path target/base \
-            --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
-          mkdir -p site/base && cp -r target/base/* site/base/
+          dbt docs generate --target-path target/base             --vars "{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}"
+          mkdir -p site/base
+          cp -r target/base/* site/base/
 
       - name: Build Pro docs (Pro ON)
         run: |
-          dbt docs generate --target-path target/pro \
-            --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
-          mkdir -p site/pro && cp -r target/pro/* site/pro/
+          dbt docs generate --target-path target/pro             --vars "{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}"
+          mkdir -p site/pro
+          cp -r target/pro/* site/pro/
 
       - name: Add site index
         run: |

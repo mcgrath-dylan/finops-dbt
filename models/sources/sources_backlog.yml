@@ -1,22 +1,14 @@
 version: 2
 
+# Backlog/unimplemented sources - kept out of main docs to avoid noise.
+# Move any table back into _snowflake__sources.yml when you build models that use them.
 sources:
-  - name: account_usage
+  - name: account_usage_backlog
     database: "{{ var('account_usage_database', 'SNOWFLAKE') }}"
     schema: "{{ var('account_usage_schema', 'ACCOUNT_USAGE') }}"
     tables:
       - name: STORAGE_USAGE
-        loaded_at_field: USAGE_DATE
-        tags: ['backlog']
       - name: DATABASE_STORAGE_USAGE_HISTORY
-        loaded_at_field: USAGE_DATE
-        tags: ['backlog']
       - name: TABLE_STORAGE_METRICS
-        loaded_at_field: TABLE_CREATED
-        tags: ['backlog']
       - name: AUTOMATIC_CLUSTERING_HISTORY
-        loaded_at_field: END_TIME
-        tags: ['backlog']
       - name: WAREHOUSE_EVENTS_HISTORY
-        loaded_at_field: END_TIME
-        tags: ['backlog']

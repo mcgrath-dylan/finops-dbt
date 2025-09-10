@@ -2,9 +2,7 @@
   config(
     materialized='table',
     schema='DEMO',
-    alias='WAREHOUSE_METERING_HISTORY',
-    enabled=var('DEMO_MODE', false),
-    tags=['mode:demo']
+    alias='WAREHOUSE_METERING_HISTORY'
   )
 }}
 

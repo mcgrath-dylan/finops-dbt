@@ -2,16 +2,11 @@ version: 2
 
 sources:
   - name: account_usage
-    description: Snowflake Account Usage schema — source of truth for compute costs
+    description: Snowflake Account Usage schema
     database: "{{ var('account_usage_database', 'SNOWFLAKE') }}"
     schema: "{{ var('account_usage_schema', 'ACCOUNT_USAGE') }}"
-    freshness:
-      warn_after: {count: 6, period: hour}
-      error_after: {count: 24, period: hour}
     tables:
       - name: WAREHOUSE_METERING_HISTORY
-        description: Authoritative credits by warehouse/hour
         loaded_at_field: END_TIME
       - name: QUERY_HISTORY
-        description: Query metadata for patterns (not $$)
         loaded_at_field: END_TIME

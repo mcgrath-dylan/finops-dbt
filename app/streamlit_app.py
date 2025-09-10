@@ -158,34 +158,43 @@ def load_models(demo: bool, lookback_days: int):
         order by usage_date
     """, cache_key=f"dept:{db}.{sch}:{lb}"))
     if "usage_date" in dept.columns: dept["usage_date"] = pd.to_datetime(dept["usage_date"]).dt.date
-    dept = to_float(dept, ["total_cost_usd"])
-    # Fallback: if mart is empty (e.g., mapping not present in this schema),
-    # derive departments from fct_daily_costs and optional local seed.
+    dept = to_float(dept, ["total_cost_us
+    # Fallback: if department mart empty, derive from fct_daily_costs + local mapping seed
     if (dept is None or dept.empty) and (fct is not None and not fct.empty):
-        depmap = load_department_mapping()
+        # try to load local seed
+        import pandas as pd, os
+        mapping = None
+        for p in ("seeds/department_mapping.csv", os.path.join("app","department_mapping.csv"), "/mnt/data/department_mapping.csv", "department_mapping.csv"):
+            if os.path.exists(p):
+                try:
+                    _m = pd.read_csv(p)
+                    cols = {c.lower(): c for c in _m.columns}
+                    wn = cols.get("warehouse_name"); dp = cols.get("department")
+                    if wn and dp:
+                        mapping = _m[[wn, dp]].copy()
+                        mapping.columns=["warehouse_name","department"]
+                        mapping["warehouse_name"]=mapping["warehouse_name"].astype(str).str.upper()
+                        break
+                except Exception:
+                    pass
         tmp = fct.copy()
-        # replicate mart metric (compute + idle)
-        for col in ("compute_cost", "idle_cost"):
+        for col in ("compute_cost","idle_cost"):
             if col not in tmp.columns:
-                tmp[col] = 0.0
-        tmp["total_cost_usd"] = tmp["compute_cost"].fillna(0) + tmp["idle_cost"].fillna(0)
-
-        if depmap is not None and not depmap.empty and "warehouse_name" in tmp.columns:
-            tmp["warehouse_name"] = tmp["warehouse_name"].astype(str).str.upper()
-            depmap["warehouse_name"] = depmap["warehouse_name"].astype(str).str.upper()
-            tmp = tmp.merge(depmap, on="warehouse_name", how="left")
-            tmp["department"] = tmp["department"].fillna("Unassigned")
+                tmp[col]=0.0
+        tmp["total_cost_usd"]=tmp["compute_cost"].fillna(0)+tmp["idle_cost"].fillna(0)
+        if "warehouse_name" in tmp.columns:
+            tmp["warehouse_name"]=tmp["warehouse_name"].astype(str).str.upper()
+        if mapping is not None:
+            tmp = tmp.merge(mapping, on="warehouse_name", how="left")
+            tmp["department"]=tmp["department"].fillna("Unassigned")
         else:
-            tmp["department"] = "Unassigned"
-
+            tmp["department"]="Unassigned"
         if "usage_date" in tmp.columns:
-            tmp["usage_date"] = pd.to_datetime(tmp["usage_date"]).dt.date
-            dept = (tmp.groupby(["department","usage_date"], as_index=False)["total_cost_usd"]
-                      .sum()
-                      .sort_values(["usage_date","department"]))
+            tmp["usage_date"]=pd.to_datetime(tmp["usage_date"]).dt.date
+            dept = tmp.groupby(["department","usage_date"], as_index=False)["total_cost_usd"].sum().sort_values(["usage_date","department"])
         else:
             dept = pd.DataFrame(columns=["department","usage_date","total_cost_usd"])
-
+d"])
 
     fresh = lc(run_query(f"""
         select max(end_time) as last_end_time
@@ -200,30 +209,6 @@ def load_budget() -> Optional[pd.DataFrame]:
         if os.path.exists(p):
             b = pd.read_csv(p); b["date"] = pd.to_datetime(b["date"]).dt.date; return b
     return None
-
-@st.cache_data(show_spinner=False)
-def load_department_mapping() -> Optional[pd.DataFrame]:
-    """Best-effort local seed loader to keep demo robust."""
-    candidate_paths = (
-        "seeds/department_mapping.csv",
-        os.path.join("app", "department_mapping.csv"),
-        "/mnt/data/department_mapping.csv",
-        "department_mapping.csv",
-    )
-    for p in candidate_paths:
-        if os.path.exists(p):
-            df = pd.read_csv(p)
-            cols = {c.lower(): c for c in df.columns}
-            wn = cols.get("warehouse_name")
-            dp = cols.get("department")
-            if wn and dp:
-                out = df[[wn, dp]].copy()
-                out.columns = ["warehouse_name", "department"]
-                out["warehouse_name"] = out["warehouse_name"].astype(str).str.upper()
-                out["department"] = out["department"].astype(str).str.strip()
-                return out
-    return None
-
 
 @st.cache_data(show_spinner=False)
 def load_current_warehouses():

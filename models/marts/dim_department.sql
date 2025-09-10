@@ -1,5 +1,6 @@
-{{ config(tags=['pack:base', 'stage:marts']) }}
+{{ config(materialized='view') }}
+
 select
-  trim(department)      as department,
-  upper(warehouse_name) as warehouse_name
+    upper(trim(warehouse_name)) as warehouse_name,
+    trim(department) as department
 from {{ ref('department_mapping') }}

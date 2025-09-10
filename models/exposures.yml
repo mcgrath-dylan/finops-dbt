@@ -3,9 +3,9 @@ version: 2
 exposures:
   - name: finops_streamlit_app
     type: application
-    maturity: medium
+    maturity: low
     url: "https://github.com/mcgrath-dylan/finops-dbt"
-    description: "{{ doc('exposure_app_overview') }}"
+    description: "Read-only Streamlit app visualizing FinOps marts; Pro surfaces candidates."
     owner:
       name: Dylan McGrath
       email: mcgrath.fintech@gmail.com

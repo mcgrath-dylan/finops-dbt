@@ -2,7 +2,7 @@ name: Nightly — dbt Docs (Base & Pro) + optional Build
 
 on:
   schedule:
-    - cron: '0 5 * * *'  # ~00:00 Eastern (05:00 UTC; 01:00 ET during DST)
+    - cron: '15 07 * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,12 +11,8 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
-      
-      # Pull from secrets; if empty/unset, fall back to safe defaults for docs.
       WINDOW_DAYS: ${{ secrets.WINDOW_DAYS || '30' }}
       COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT || '3.00' }}
-      
-      # Optional Snowflake creds; leave unset to skip build
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -45,18 +41,19 @@ jobs:
 
       - name: Optional — dbt build on Snowflake
         if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
-        run: dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' --fail-fast
+        run: |
+          dbt build --vars "{"enable_pro_pack": false, "DEMO_MODE": false}" --fail-fast
 
       - name: Build Base docs
         run: |
           dbt parse
-          dbt docs generate --target-path target/base --vars '{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}'
+          dbt docs generate --target-path target/base             --vars "{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}"
           mkdir -p site/base
           cp -r target/base/* site/base/
 
       - name: Build Pro docs
         run: |
-          dbt docs generate --target-path target/pro --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
+          dbt docs generate --target-path target/pro             --vars "{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}"
           mkdir -p site/pro
           cp -r target/pro/* site/pro/
 

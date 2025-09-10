@@ -1,5 +1,5 @@
 name: 'snowflake_finops'
-version: '1.1.0'
+version: '1.1.1'
 config-version: 2
 
 profile: 'snowflake_finops'
@@ -14,46 +14,26 @@ snapshot-paths: ["snapshots"]
 target-path: "target"
 clean-targets:
   - "target"
-  - "dbt_packages"
 
 vars:
-  # Cost Configuration - CRITICAL: fed from environment
-  cost_per_credit: "{{ env_var('COST_PER_CREDIT', 3.00) }}"
-  
-  # Data Retention Windows
-  query_history_days: "{{ env_var('WINDOW_DAYS', 30) }}"
-  metering_history_days: "{{ env_var('WINDOW_DAYS', 30) }}"
-  storage_history_days: "{{ env_var('WINDOW_DAYS', 30) }}"
-  
-  # Thresholds
-  idle_threshold_seconds: 300  # 5 minutes
-  expensive_query_threshold_usd: 1.00
-  
-  # Roles & Access
-  read_role: 'ANALYST'
-  
-  # Source database
-  account_usage_database: 'SNOWFLAKE'
-  account_usage_schema: 'ACCOUNT_USAGE'
-
-  # App configs
-  enable_budget: true
   enable_pro_pack: false
   DEMO_MODE: false
-  snowflake_finops_pro:
-    enable_pro_pack: true      # overrides var() inside the Pro package only
-  
-  # Pro Pack thresholds (conservative defaults)
-  min_idle_pct_for_candidate: 0.25  # 25% idle dollars share
-  min_daily_cost_usd_for_candidate: 5  # avg daily $
+  cost_per_credit: "{{ env_var('COST_PER_CREDIT', 3.00) }}"
+  query_history_days: "{{ env_var('WINDOW_DAYS', 30) }}"
+  metering_history_days: "{{ env_var('WINDOW_DAYS', 30) }}"
+  account_usage_database: "SNOWFLAKE"
+  account_usage_schema: "ACCOUNT_USAGE"
 
 models:
   on_schema_change: "{{ 'fail' if target.name == 'prod' else 'sync_all_columns' }}"
   snowflake_finops:
-    +tags: ["pack:base"]
     staging:
       +materialized: incremental
+      +tags: ["stage:staging","pack:base"]
     intermediate:
       +materialized: incremental
+      +tags: ["stage:intermediate","pack:base"]
     marts:
       +materialized: table
+      +tags: ["stage:marts","pack:base"]
+  

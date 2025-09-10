@@ -1,8 +1,4 @@
-**Docs:**  
-• Base (Starter): https://mcgrath-dylan.github.io/finops-dbt/base/  
-• Pro view (Starter + Pro Pack): https://mcgrath-dylan.github.io/finops-dbt/pro/
-
-# FinOps for Snowflake + dbt (Starter v1.1.0)
+# FinOps for Snowflake + dbt (Starter v1.0.0)
 
 A compact, credible **Snowflake spend** view built with **dbt Core** (Snowflake adapter) and a lightweight **Streamlit** app.  
 **Starter** is public; an optional private **Pro** add-on unlocks deeper idle modeling and warehouse-level opportunities.
