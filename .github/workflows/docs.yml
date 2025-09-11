@@ -1,5 +1,8 @@
 name: Build & Publish dbt Docs (Base & Pro)
 
+permissions:
+  contents: write
+
 on:
   push:
     branches: [ main ]

@@ -1,5 +1,8 @@
 name: CI — dbt Parse & Docs (PR)
 
+permissions:
+  contents: write
+
 on:
   pull_request:
 
