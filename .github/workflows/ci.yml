@@ -50,7 +50,7 @@ jobs:
           name: manifest-base
           path: target/manifest.json
 
-      # ----- Optional Pro compile when token is present -----
+      # Optional Pro compile when token is present
       - name: Enable GitHub token for private packages (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
         run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"

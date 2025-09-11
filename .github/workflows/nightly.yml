@@ -54,11 +54,12 @@ jobs:
           --vars '{"enable_pro_pack": false, "DEMO_MODE": false}'
           --exclude tag:backlog
           --exclude source:account_usage_backlog
-          --exclude seed:metering_demo_seed
+          --exclude fqn:metering_demo_seed,resource_type:seed
+          --exclude fqn:metering_overlay,resource_type:model
 
       - name: Enable GitHub token (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
-        run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".InsteadOf "https://github.com/"
+        run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 
       - name: Add Pro package & deps
         if: ${{ env.PRO_REPO_TOKEN != '' }}
@@ -76,7 +77,8 @@ jobs:
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
           --exclude tag:backlog
           --exclude source:account_usage_backlog
-          --exclude seed:metering_demo_seed
+          --exclude fqn:metering_demo_seed,resource_type:seed
+          --exclude fqn:metering_overlay,resource_type:model
 
       - name: Build static site (index + subdirs)
         run: |

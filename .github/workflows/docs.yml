@@ -19,7 +19,6 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
-      # Real Snowflake creds for catalog generation
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -55,12 +54,13 @@ jobs:
           --vars '{"enable_pro_pack": false, "DEMO_MODE": false}'
           --exclude tag:backlog
           --exclude source:account_usage_backlog
-          --exclude seed:metering_demo_seed
+          --exclude fqn:metering_demo_seed,resource_type:seed
+          --exclude fqn:metering_overlay,resource_type:model
 
       # ----- PRO BLOCK (token-gated) -----
       - name: Enable GitHub token for private packages (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
-        run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".InsteadOf "https://github.com/"
+        run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 
       - name: Add Pro package & deps
         if: ${{ env.PRO_REPO_TOKEN != '' }}
@@ -78,7 +78,8 @@ jobs:
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
           --exclude tag:backlog
           --exclude source:account_usage_backlog
-          --exclude seed:metering_demo_seed
+          --exclude fqn:metering_demo_seed,resource_type:seed
+          --exclude fqn:metering_overlay,resource_type:model
       # ----- END PRO BLOCK -----
 
       - name: Build static site (index + subdirs)
