@@ -1,9 +1,9 @@
 
 
 with metering as (
-    select * from DM_AE_FINOPS_DB.DEMO.stg_warehouse_metering
+    select * from DM_AE_FINOPS_DB.STG.stg_warehouse_metering
     
-        where hour_start > (select max(hour_start) from DM_AE_FINOPS_DB.DEMO.int_hourly_compute_costs)
+        where hour_start > (select max(hour_start) from DM_AE_FINOPS_DB.STG.int_hourly_compute_costs)
     
 ),
 
@@ -15,11 +15,11 @@ queries as (
         sum(total_elapsed_seconds) as total_runtime_seconds,
         sum(gb_scanned) as total_gb_scanned,
         count(distinct user_name) as unique_users
-    from DM_AE_FINOPS_DB.DEMO.stg_query_history
+    from DM_AE_FINOPS_DB.STG.stg_query_history
     
         where date_trunc('hour', END_TIME) >= (
             select coalesce(max(t.hour_start), '1900-01-01'::timestamp)
-            from DM_AE_FINOPS_DB.DEMO.int_hourly_compute_costs as t
+            from DM_AE_FINOPS_DB.STG.int_hourly_compute_costs as t
         )
     
     group by 1, 2
