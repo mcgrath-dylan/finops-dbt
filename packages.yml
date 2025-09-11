@@ -3,5 +3,3 @@ packages:
     version: [">=1.0.0", "<2.0.0"]
   - package: metaplane/dbt_expectations
     version: [">=0.10.0", "<0.11.0"]
-  - git: "https://github.com/mcgrath-dylan/snowflake-finops-pro.git"
-    revision: main

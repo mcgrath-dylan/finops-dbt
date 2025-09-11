@@ -19,14 +19,6 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
-      # Optional Snowflake secrets for a live build:
-      # SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      # SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      # SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      # SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      # SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-      # SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-      # SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,7 +34,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: dbt deps
+      - name: dbt deps (Base only)
         run: dbt deps
 
       - name: Generate Base docs
@@ -50,15 +42,29 @@ jobs:
           dbt docs generate
           --target-path target/base
           --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
-          --exclude 'source:account_usage_backlog.*'
+          --exclude 'source:account_usage_backlog.*' tag:backlog
 
-      - name: Generate Pro docs (token-gated)
+      # --- PRO BLOCK (token-gated) ---
+      - name: Enable GitHub token for private packages (Pro)
+        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        run: |
+          git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+
+      - name: Add Pro package & deps
+        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        run: |
+          cp packages.yml packages.base.yml
+          printf "\n  - git: https://github.com/mcgrath-dylan/snowflake-finops-pro.git\n    revision: main\n" >> packages.yml
+          dbt deps
+
+      - name: Generate Pro docs
         if: ${{ env.PRO_REPO_TOKEN != '' }}
         run: >
           dbt docs generate
           --target-path target/pro
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
-          --exclude 'source:account_usage_backlog.*'
+          --exclude 'source:account_usage_backlog.*' tag:backlog
+      # --- END PRO BLOCK ---
 
       - name: Build static site (index + subdirs)
         run: |
@@ -67,10 +73,7 @@ jobs:
           [ -d target/pro ] && cp -r target/pro/* site/pro/ || true
           cat > site/index.html <<'HTML'
           <!doctype html><meta charset="utf-8"><title>finops-dbt docs</title>
-          <style>
-            body{font-family:ui-sans-serif,system-ui,-apple-system;max-width:720px;margin:40px auto;padding:0 16px}
-            a{display:block;margin:12px 0;font-size:18px}
-          </style>
+          <style>body{font-family:ui-sans-serif,system-ui,-apple-system;max-width:720px;margin:40px auto;padding:0 16px}a{display:block;margin:12px 0;font-size:18px}</style>
           <h1>finops-dbt — documentation</h1>
           <a href="base/index.html">Base (Starter)</a>
           <a href="pro/index.html">Pro (Starter + Pro Pack)</a>

@@ -64,7 +64,9 @@ streamlit run app/streamlit_app.py
 > The docs include interactive lineage. For quick context in the README, here’s a static capture.
 
 <p align="center">
-  <img src="app/screenshots/lineage.png" alt="dbt lineage: stg → int → fct → exposure" width="900">
+  <a href="app/screenshots/lineage.png">
+    <img src="app/screenshots/lineage.png" alt="dbt lineage: sources → stg → int → fct → exposure" width="100%">
+  </a>
 </p>
 
 <details>
@@ -72,17 +74,28 @@ streamlit run app/streamlit_app.py
 
 ```mermaid
 flowchart LR
-  AU[(ACCOUNT_USAGE<br/>WAREHOUSE_METERING_HISTORY)]
-  STG[stg_warehouse_metering]
-  INT[int_*]
-  FCT[fct_*]
-  DIM[dim_department]
-  APP[[Streamlit app]]
+  W[(account_usage.WAREHOUSE_METERING_HISTORY)]
+  Q[(account_usage.QUERY_HISTORY)]
+  STG1[stg_warehouse_metering]
+  STG2[stg_query_history]
+  MON[monitor_freshness_check]
+  INT[int_hourly_compute_costs]
+  FCT[fct_daily_costs]
+  TREND[fct_cost_trend]
+  BYDEP[fct_cost_by_department]
+  BUD[fct_budget_vs_actual]
   EXP([Exposure: finops_streamlit_app])
 
-  AU --> STG --> INT --> FCT --> APP
-  DIM --> FCT
-  FCT --> EXP
+  W --> STG1 --> MON
+  STG1 --> INT
+  Q --> STG2 --> INT
+  INT --> FCT
+  FCT --> TREND
+  FCT --> BYDEP
+  FCT --> BUD
+  TREND --> EXP
+  BYDEP --> EXP
+  BUD --> EXP
 ```
 
 </details>
