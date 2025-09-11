@@ -4,13 +4,13 @@
 with source as (
     select *
     from 
-    SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+    DM_AE_FINOPS_DB.DEMO.WAREHOUSE_METERING_HISTORY   
   
-    where START_TIME >= dateadd('day', -90, current_date())
+    where START_TIME >= dateadd('day', -30, current_date())
     
       and date(END_TIME) >= (
           select coalesce(max(t.usage_date), '1900-01-01'::date)
-          from DM_AE_FINOPS_DB.STG.stg_warehouse_metering as t
+          from DM_AE_FINOPS_DB.DEMO.stg_warehouse_metering as t
       )
     
 ),
@@ -33,9 +33,9 @@ normalized as (
         CREDITS_USED_CLOUD_SERVICES        as credits_used_cloud_services,
 
         -- dollars (authoritative)
-        (CREDITS_USED * 3.00)                as total_cost_usd,
-        (CREDITS_USED_COMPUTE * 3.00)        as compute_cost_usd,
-        (CREDITS_USED_CLOUD_SERVICES * 3.00) as cloud_services_cost_usd,
+        (CREDITS_USED * 3.0)                as total_cost_usd,
+        (CREDITS_USED_COMPUTE * 3.0)        as compute_cost_usd,
+        (CREDITS_USED_CLOUD_SERVICES * 3.0) as cloud_services_cost_usd,
 
         -- stable unique key per warehouse-hour
         concat_ws('|', WAREHOUSE_ID::string, to_char(END_TIME, 'YYYY-MM-DD HH24:MI:SS')) as metering_id,

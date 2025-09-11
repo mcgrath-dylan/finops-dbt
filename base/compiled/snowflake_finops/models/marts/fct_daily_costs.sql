@@ -15,7 +15,7 @@ with compute_costs as (
         sum(idle_cost_usd)              as idle_cost,
         sum(queries_executed)           as total_queries,
         avg(unique_users)               as avg_concurrent_users
-    from DM_AE_FINOPS_DB.STG.int_hourly_compute_costs
+    from DM_AE_FINOPS_DB.DEMO.int_hourly_compute_costs
     group by 1, 2
 ),
 

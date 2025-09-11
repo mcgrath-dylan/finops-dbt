@@ -3,11 +3,11 @@
 with source as (
     select *
     from SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
-    where START_TIME >= dateadd('day', -90, current_date())
+    where START_TIME >= dateadd('day', -30, current_date())
     
       and date(END_TIME) >= (
           select coalesce(max(t.usage_date), '1900-01-01'::date)
-          from DM_AE_FINOPS_DB.STG.stg_query_history as t
+          from DM_AE_FINOPS_DB.DEMO.stg_query_history as t
       )
     
 ),

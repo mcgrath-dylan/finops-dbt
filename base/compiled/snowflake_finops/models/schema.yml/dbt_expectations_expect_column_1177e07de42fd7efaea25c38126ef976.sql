@@ -16,7 +16,7 @@
  as expression
 
 
-    from DM_AE_FINOPS_DB.STG.fct_daily_costs
+    from DM_AE_FINOPS_DB.DEMO.fct_daily_costs
     
 
 ),

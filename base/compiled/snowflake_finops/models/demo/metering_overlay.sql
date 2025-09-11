@@ -7,7 +7,7 @@ with base as (
     WAREHOUSE_NAME,
     TOTAL_CREDITS_USED,
     TOTAL_COST_USD
-  from DM_AE_FINOPS_DB.STG.metering_demo_seed
+  from DM_AE_FINOPS_DB.DEMO.metering_demo_seed
 ),
 
 -- derive a stable synthetic warehouse_id and split credits

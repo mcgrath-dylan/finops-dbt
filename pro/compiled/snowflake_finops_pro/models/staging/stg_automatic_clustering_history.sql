@@ -8,7 +8,7 @@ with src as (
         START_TIME,
         CREDITS_USED
     from SNOWFLAKE.ACCOUNT_USAGE.AUTOMATIC_CLUSTERING_HISTORY
-    where START_TIME >= dateadd('day', -90, current_date())
+    where START_TIME >= dateadd('day', -30, current_date())
     
       and date(START_TIME) >= (
           select coalesce(max(date(START_TIME)), '1900-01-01'::date)
