@@ -5,8 +5,7 @@ permissions:
 
 on:
   schedule:
-    # ~midnight ET: 05:00 UTC (midnight ET in winter, ~1am in summer)
-    - cron: '0 5 * * *'
+    - cron: '0 5 * * *'   # ~midnight ET
   workflow_dispatch:
 
 concurrency:
@@ -20,10 +19,16 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -40,10 +45,10 @@ jobs:
       - name: dbt deps (Base only)
         run: dbt deps
 
-      - name: Generate Base docs
+      - name: Generate Base docs (uses prod target for catalog)
         run: >
           dbt docs generate
-          --target docs
+          --target prod
           --target-path target/base
           --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
           --exclude 'source:account_usage_backlog.*' tag:backlog
@@ -59,11 +64,11 @@ jobs:
           printf "\n  - git: https://github.com/mcgrath-dylan/snowflake-finops-pro.git\n    revision: main\n" >> packages.yml
           dbt deps
 
-      - name: Generate Pro docs
+      - name: Generate Pro docs (uses prod target for catalog)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
         run: >
           dbt docs generate
-          --target docs
+          --target prod
           --target-path target/pro
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
           --exclude 'source:account_usage_backlog.*' tag:backlog
