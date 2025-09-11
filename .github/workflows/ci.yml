@@ -1,4 +1,4 @@
-name: PR — Validate dbt & Docs
+name: PR — Validate dbt (compile only)
 
 permissions:
   contents: read
@@ -13,7 +13,7 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
@@ -34,24 +34,23 @@ jobs:
       - name: Remove stale package lock (if any)
         run: rm -f package-lock.yml
 
-      # Base deps & docs (no private packages)
       - name: dbt deps (Base only)
         run: dbt deps
 
-      - name: Generate Base docs (artifact)
+      - name: Compile (Base)
         run: >
-          dbt docs generate
+          dbt compile
           --target docs
-          --target-path target/base
           --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
-          --exclude 'source:account_usage_backlog.*' tag:backlog
+          --fail-fast
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload manifest (Base)
+        uses: actions/upload-artifact@v4
         with:
-          name: dbt-docs-base
-          path: target/base
+          name: manifest-base
+          path: target/manifest.json
 
-      # Pro path — only if token present
+      # ----- Optional Pro compile when token is present -----
       - name: Enable GitHub token for private packages (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
         run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
@@ -63,17 +62,17 @@ jobs:
           printf "\n  - git: https://github.com/mcgrath-dylan/snowflake-finops-pro.git\n    revision: main\n" >> packages.yml
           dbt deps
 
-      - name: Generate Pro docs (artifact)
+      - name: Compile (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
         run: >
-          dbt docs generate
+          dbt compile
           --target docs
-          --target-path target/pro
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
-          --exclude 'source:account_usage_backlog.*' tag:backlog
+          --fail-fast
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload manifest (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
+        uses: actions/upload-artifact@v4
         with:
-          name: dbt-docs-pro
-          path: target/pro
+          name: manifest-pro
+          path: target/manifest.json

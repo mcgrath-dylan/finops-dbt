@@ -29,11 +29,9 @@ jobs:
       SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -49,18 +47,20 @@ jobs:
       - name: dbt deps (Base only)
         run: dbt deps
 
-      - name: Generate Base docs (uses prod target for catalog)
+      - name: Generate Base docs (prod catalog; hide demo/backlog)
         run: >
           dbt docs generate
           --target prod
           --target-path target/base
-          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
-          --exclude 'source:account_usage_backlog.*' tag:backlog
+          --vars '{"enable_pro_pack": false, "DEMO_MODE": false}'
+          --exclude tag:backlog
+          --exclude source:account_usage_backlog
+          --exclude name:metering_demo_seed
 
-      # --- PRO BLOCK (token-gated) ---
+      # ----- PRO BLOCK (token-gated) -----
       - name: Enable GitHub token for private packages (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
-        run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+        run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".InsteadOf "https://github.com/"
 
       - name: Add Pro package & deps
         if: ${{ env.PRO_REPO_TOKEN != '' }}
@@ -69,15 +69,17 @@ jobs:
           printf "\n  - git: https://github.com/mcgrath-dylan/snowflake-finops-pro.git\n    revision: main\n" >> packages.yml
           dbt deps
 
-      - name: Generate Pro docs (uses prod target for catalog)
+      - name: Generate Pro docs (prod catalog; hide demo/backlog)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
         run: >
           dbt docs generate
           --target prod
           --target-path target/pro
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
-          --exclude 'source:account_usage_backlog.*' tag:backlog
-      # --- END PRO BLOCK ---
+          --exclude tag:backlog
+          --exclude source:account_usage_backlog
+          --exclude name:metering_demo_seed
+      # ----- END PRO BLOCK -----
 
       - name: Build static site (index + subdirs)
         run: |
