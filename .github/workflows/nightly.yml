@@ -54,7 +54,7 @@ jobs:
           --vars '{"enable_pro_pack": false, "DEMO_MODE": false}'
           --exclude tag:backlog
           --exclude source:account_usage_backlog
-          --exclude name:metering_demo_seed
+          --exclude seed:metering_demo_seed
 
       - name: Enable GitHub token (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
@@ -76,7 +76,7 @@ jobs:
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
           --exclude tag:backlog
           --exclude source:account_usage_backlog
-          --exclude name:metering_demo_seed
+          --exclude seed:metering_demo_seed
 
       - name: Build static site (index + subdirs)
         run: |
