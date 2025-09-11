@@ -1,0 +1,8 @@
+finops-dbt — FinOps for Snowflake + dbt (Starter)
+Copyright (c) 2025 Dylan McGrath
+
+This product includes software developed by Dylan McGrath.
+Seeds contain synthetic/sample data for demonstration only.
+
+This distribution may include dependencies licensed by their respective authors.
+See individual projects for license terms (e.g., dbt-utils, dbt-expectations).

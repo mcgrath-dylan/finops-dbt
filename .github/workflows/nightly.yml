@@ -1,75 +1,72 @@
-name: Nightly — dbt Docs (Base & Pro) + optional Build
+name: Nightly — dbt Docs (Base & Pro)
 
 permissions:
   contents: write
 
 on:
   schedule:
-    - cron: '15 07 * * *'
+    # ~midnight ET: 05:00 UTC (midnight ET in winter, ~1am in summer)
+    - cron: '0 5 * * *'
   workflow_dispatch:
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
 
 jobs:
   nightly:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
-      WINDOW_DAYS: ${{ secrets.WINDOW_DAYS || '30' }}
-      COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT || '3.00' }}
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure Git auth for private Pro package
-        if: ${{ env.PRO_REPO_TOKEN != '' }}
-        run: git config --global url."https://${{ env.PRO_REPO_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
-      - name: Install dbt
-        run: pip install "dbt-snowflake~=1.10"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: dbt deps
         run: dbt deps
 
-      - name: Optional — dbt build on Snowflake
-        if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
-        run: |
-          dbt build --vars "{"enable_pro_pack": false, "DEMO_MODE": false}" --fail-fast
+      - name: Generate Base docs
+        run: >
+          dbt docs generate
+          --target-path target/base
+          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
+          --exclude 'source:account_usage_backlog.*'
 
-      - name: Build Base docs
-        run: |
-          dbt parse
-          dbt docs generate --target-path target/base             --vars "{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}"
-          mkdir -p site/base
-          cp -r target/base/* site/base/
+      - name: Generate Pro docs (token-gated)
+        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        run: >
+          dbt docs generate
+          --target-path target/pro
+          --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
+          --exclude 'source:account_usage_backlog.*'
 
-      - name: Build Pro docs
+      - name: Build static site (index + subdirs)
         run: |
-          dbt docs generate --target-path target/pro             --vars "{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}"
-          mkdir -p site/pro
-          cp -r target/pro/* site/pro/
-
-      - name: Add site index
-        run: |
-          mkdir -p site
+          mkdir -p site/base site/pro
+          [ -d target/base ] && cp -r target/base/* site/base/ || true
+          [ -d target/pro ] && cp -r target/pro/* site/pro/ || true
           cat > site/index.html <<'HTML'
           <!doctype html><meta charset="utf-8"><title>finops-dbt docs</title>
-          <h1>finops-dbt docs</h1>
-          <ul>
-            <li><a href="base/index.html">Base (Starter)</a></li>
-            <li><a href="pro/index.html">Pro (Starter + Pro Pack)</a></li>
-          </ul>
+          <style>
+            body{font-family:ui-sans-serif,system-ui,-apple-system;max-width:720px;margin:40px auto;padding:0 16px}
+            a{display:block;margin:12px 0;font-size:18px}
+          </style>
+          <h1>finops-dbt — documentation (nightly)</h1>
+          <a href="base/index.html">Base (Starter)</a>
+          <a href="pro/index.html">Pro (Starter + Pro Pack)</a>
           HTML
 
       - name: Publish to GitHub Pages

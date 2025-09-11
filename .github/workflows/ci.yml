@@ -1,66 +1,70 @@
-name: CI — dbt Parse & Docs (PR)
+name: PR — Validate dbt & Docs
 
 permissions:
-  contents: write
+  contents: read
 
 on:
   pull_request:
 
+concurrency:
+  group: pr-ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
-      WINDOW_DAYS: ${{ secrets.WINDOW_DAYS || '30' }}
-      COST_PER_CREDIT: ${{ secrets.COST_PER_CREDIT || '3.00' }}
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
-
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure Git auth for private Pro package
-        if: ${{ env.PRO_REPO_TOKEN != '' }}
-        run: git config --global url."https://${{ env.PRO_REPO_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
 
-      - name: Install dbt
-        run: pip install "dbt-snowflake~=1.10"
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: dbt deps
         run: dbt deps
 
-      - name: dbt parse
-        run: dbt parse
+      # Use compile for PR safety (no warehouse dependency).
+      - name: dbt compile (Demo config)
+        run: >
+          dbt compile
+          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
 
-      - name: Generate Base docs
-        run: |
-          dbt docs generate --target-path target/base             --vars "{"enable_pro_pack": false, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": false}}"
-      - uses: actions/upload-artifact@v4
+      - name: Generate Base docs (artifact)
+        run: >
+          dbt docs generate
+          --target-path target/base
+          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
+          --exclude 'source:account_usage_backlog.*'
+
+      - name: Upload Base docs
+        uses: actions/upload-artifact@v4
         with:
           name: dbt-docs-base
           path: target/base
 
-      - name: Generate Pro docs
-        run: |
-          dbt docs generate --target-path target/pro             --vars "{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}"
-      - uses: actions/upload-artifact@v4
+      - name: Generate Pro docs (artifact, if token present)
+        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        run: >
+          dbt docs generate
+          --target-path target/pro
+          --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
+          --exclude 'source:account_usage_backlog.*'
+
+      - name: Upload Pro docs
+        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        uses: actions/upload-artifact@v4
         with:
           name: dbt-docs-pro
           path: target/pro
-
-      - name: Optional — run dbt build on Snowflake
-        if: ${{ env.SNOWFLAKE_ACCOUNT != '' }}
-        run: |
-          dbt build --vars "{"enable_pro_pack": false, "DEMO_MODE": false}" --fail-fast

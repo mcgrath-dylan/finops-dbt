@@ -1,67 +1,146 @@
-# FinOps for Snowflake + dbt (Starter v1.0.0)
+# FinOps for Snowflake + dbt (Starter v1.1.0)
 
-A compact, credible **Snowflake spend** view built with **dbt Core** (Snowflake adapter) and a lightweight **Streamlit** app.  
-**Starter** is public; an optional private **Pro** add-on unlocks deeper idle modeling and warehouse-level opportunities.
+A production-literate starter that turns Snowflake `ACCOUNT_USAGE` into clear daily $$, KPIs, lineage, and a small Streamlit app. Optional **Pro** add-on surfaces hourly idle patterns and right-sizing hints.
 
----
+<p align="center">
+  <a href="https://mcgrath-dylan.github.io/finops-dbt/">
+    <img alt="Docs & Lineage" src="https://img.shields.io/badge/Docs%20%26%20Lineage-Open-informational?logo=readthedocs" />
+  </a>
+  <a href="https://github.com/mcgrath-dylan/finops-dbt">
+    <img alt="Repository" src="https://img.shields.io/badge/Repository-View-black?logo=github" />
+  </a>
+</p>
 
-## What you get
+<p align="center">
+  <img src="app/screenshots/hero.png" alt="Hero KPIs" width="900">
+</p>
 
-**Starter (this repo)**
+![Docs](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/docs.yml/badge.svg)
+![Nightly](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/nightly.yml/badge.svg)
+![PR CI](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/ci.yml/badge.svg)
+![dbt Core](https://img.shields.io/badge/dbt-1.10.x-informational)
+![Python](https://img.shields.io/badge/Python-3.11-informational)
+![License](https://img.shields.io/badge/License-Apache--2.0-blue)
 
-- **Month-to-date spend** — authoritative, from `SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY`
-- **Forecast (month)** — prorates the current run rate to a 30-day month
-- **Idle wasted (last N days)** — historical sum of hourly idle cost over the last **N** days
-- **Spend by Department** (trend)
-- **Top Departments** and **Top Warehouses** (last N days)
-- **Download insights CSV** (department/warehouse + spend last N + idle $/mo + suggested action)
+## Quickstart — 30s
 
-**Pro (optional, licensed)**
+```bash
+git clone https://github.com/mcgrath-dylan/finops-dbt.git
+cd finops-dbt
+python -m venv .venv && source .venv/bin/activate   # or your preferred env
+pip install -r requirements.txt
+dbt deps && dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": true}' --fail-fast
+streamlit run app/streamlit_app.py
+````
 
-- **Idle projected (monthly)** KPI (from the hourly model, scaled)
-- **Pro Insights** table: per-warehouse **Idle $/mo (display)** and **Idle share %**
-- **Change-set actions** toggle: suggest autosuspend updates and simple rightsizing hints
+## Highlights (1-minute skim)
 
-> All $ values are estimates except the “authoritative” spend derived from **Warehouse Metering History** (Compute + Cloud Services).
-
----
-
-## Screenshots
-
-> Images below show **Demo mode** with **Pro enabled** (for illustration). Numbers are sample data.
-
-<p align="center"><img src="app/screenshots/hero.png" alt="KPIs and controls" width="1100"></p>
-<p align="center"><img src="app/screenshots/spend_by_department.png" alt="Spend by Department trend" width="1100"></p>
-<p align="center"><img src="app/screenshots/top_tables.png" alt="Top Departments and Top Warehouses" width="1100"></p>
-<p align="center"><img src="app/screenshots/pro_insights.png" alt="Pro Insights table" width="1100"></p>
-
----
-
-## Architecture at a glance
-
-- **Warehouse sources**: `SNOWFLAKE.ACCOUNT_USAGE` (metering/events).  
-- **dbt**: staging → intermediates → marts; tests and docs generated in CI.  
-- **App**: Streamlit reads the marts, renders KPIs/tables, and exports an insights CSV.  
-- **CI/Docs**: Nightly `dbt build` + GitHub Pages for dbt docs (public).
-
----
+* **Authoritative daily spend** from `WAREHOUSE_METERING_HISTORY` with tested marts & contracts.
+* **Docs & lineage** auto-published to GitHub Pages (Base; Pro when enabled).
+* **Streamlit app**: MTD, forecast, dept trend; **Pro** adds idle \$/mo and idle share %.
+* **CI discipline**: PR compiles & docs artifacts; `main` publishes; nightly refresh \~midnight ET.
 
 ## Starter vs Pro
 
-| Capability | Starter | Pro |
-|---|:--:|:--:|
-| Month-to-date spend (authoritative) | ✅ | ✅ |
-| Forecast (month) | ✅ | ✅ |
-| **Idle wasted (last N days)** | ✅ | ✅ |
-| **Idle projected (monthly)** |  | ✅ |
-| Pro Insights table (Idle $/mo, Idle %) |  | ✅ |
-| Change-set actions (autosuspend SQL, hints) |  | ✅ |
+| Capability                                        | Starter | Pro |
+| ------------------------------------------------- | :-----: | :-: |
+| Month-to-date (authoritative)                     |    ✅    |  ✅  |
+| Forecast (month)                                  |    ✅    |  ✅  |
+| Idle wasted (last N days, display)                |    ✅    |  ✅  |
+| Idle projected (monthly, from hourly)             |         |  ✅  |
+| Pro insights table (idle \$/mo, idle %)           |         |  ✅  |
+| Change-set actions (autosuspend/right-size hints) |         |  ✅  |
+
+## Screens
+
+<p>
+  <img src="app/screenshots/spend_by_department.png" alt="Spend by Department" width="900"><br/>
+  <img src="app/screenshots/top_tables.png" alt="Top Departments & Warehouses" width="900"><br/>
+  <img src="app/screenshots/pro_insights.png" alt="Pro Insights" width="900">
+</p>
+
+## Architecture & lineage
+
+> The docs include interactive lineage. For quick context in the README, here’s a static capture.
+
+<p align="center">
+  <img src="app/screenshots/lineage.png" alt="dbt lineage: stg → int → fct → exposure" width="900">
+</p>
+
+<details>
+<summary>Optional: schematic (Mermaid fallback)</summary>
+
+```mermaid
+flowchart LR
+  AU[(ACCOUNT_USAGE<br/>WAREHOUSE_METERING_HISTORY)]
+  STG[stg_warehouse_metering]
+  INT[int_*]
+  FCT[fct_*]
+  DIM[dim_department]
+  APP[[Streamlit app]]
+  EXP([Exposure: finops_streamlit_app])
+
+  AU --> STG --> INT --> FCT --> APP
+  DIM --> FCT
+  FCT --> EXP
+```
+
+</details>
 
 ---
 
-## Docs & contact
+<details>
+<summary><b>What you get (more detail)</b></summary>
 
-- dbt docs / lineage: published via GitHub Pages.  
-- Questions, feedback, or Pro licensing: **mcgrath.fintech@gmail.com**
+**Starter**
 
-> Interested in a guided walk-through or a customized build for your environment? Reach out! I would be happy to tailor the app to your needs.
+* Month-to-date spend (authoritative), Forecast (month), Idle (last N days, display)
+* Spend by Department (trend), Top Departments/Warehouses
+* Seeds for demo budgets & dept mapping
+* Live docs & lineage on GitHub Pages (**Base**)
+
+**Pro (optional, licensed)**
+
+* Idle projected (monthly) from hourly model
+* Pro insights table: idle \$/mo (display) and idle share %
+* Optional change-set actions (autosuspend / right-size hints)
+
+</details>
+
+<details>
+<summary><b>How the numbers are computed</b></summary>
+
+* **Authoritative daily spend**: credits from `WAREHOUSE_METERING_HISTORY` at daily grain (`fct_daily_costs`).
+* **Forecast (month)**: current pace projected to a 30-day month.
+* **Idle (last N days)**: historical sum of idle-classified hours over the window (display).
+* **Pro idle projected (monthly)**: scales Pro hourly model to a month.
+* **Pro idle share %**: idle hours / total active hours in the Pro hourly model.
+
+> Pro heuristics are conservative hints, not a policy engine.
+
+</details>
+
+<details>
+<summary><b>Runbook & CI</b></summary>
+
+* **PRs**: compile + docs as artifacts (no publish).
+* **Main**: publish **Base** docs always; publish **Pro** docs when a token is present.
+* **Nightly**: \~midnight ET (05:00 UTC).
+* **Docs default**: built **without** live Snowflake creds (stable, reproducible).
+
+  * If you want **live catalog metadata**, uncomment `SNOWFLAKE_*` in `.github/workflows/docs.yml` and add a build step before `dbt docs generate`.
+
+</details>
+
+## License / Documentation / Contact
+
+Starter: **Apache-2.0**  
+Pro add-on: **Business Source License 1.1** (in private repo)
+
+**View Documentation:
+[Starter Version](https://mcgrath-dylan.github.io/finops-dbt/base/) • [Pro Version](https://mcgrath-dylan.github.io/finops-dbt/pro/)**  
+
+> Interested in a guided walk-through or a customized build for your environment?  
+> I would be happy to tailor the app to your needs.
+
+**Questions, feedback, or Pro licensing: mcgrath.fintech@gmail.com**
