@@ -1,8 +1,25 @@
-# CI profile for dbt Core (uses env vars provided by GitHub Actions secrets)
+# .ci/profiles/profiles.yml
 snowflake_finops:
-  target: ci
+  # Default target for CI docs builds (no real creds required)
+  target: docs
+
   outputs:
-    ci:
+    # Docs target: resolves env_var() with safe defaults so parse never fails.
+    docs:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'demo_account') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'demo_user') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', 'demo_password') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'DEMO_ROLE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'DEMO_WH') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'DEMO_DB') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'DEMO_SCHEMA') }}"
+      client_session_keep_alive: false
+      query_tag: "finops-dbt-docs"
+
+    # Live target: strict envs, no defaults. Use this locally or
+    # if you later want CI to hit a real Snowflake for catalog runs.
+    prod:
       type: snowflake
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_USER') }}"
@@ -12,3 +29,4 @@ snowflake_finops:
       database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
       schema: "{{ env_var('SNOWFLAKE_SCHEMA') }}"
       client_session_keep_alive: false
+      query_tag: "finops-dbt-live"

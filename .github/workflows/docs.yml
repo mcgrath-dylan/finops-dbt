@@ -19,6 +19,7 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,12 +35,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Remove stale package lock (if any)
+        run: rm -f package-lock.yml
+
       - name: dbt deps (Base only)
         run: dbt deps
 
       - name: Generate Base docs
         run: >
           dbt docs generate
+          --target docs
           --target-path target/base
           --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
           --exclude 'source:account_usage_backlog.*' tag:backlog
@@ -47,8 +52,7 @@ jobs:
       # --- PRO BLOCK (token-gated) ---
       - name: Enable GitHub token for private packages (Pro)
         if: ${{ env.PRO_REPO_TOKEN != '' }}
-        run: |
-          git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
+        run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 
       - name: Add Pro package & deps
         if: ${{ env.PRO_REPO_TOKEN != '' }}
@@ -61,6 +65,7 @@ jobs:
         if: ${{ env.PRO_REPO_TOKEN != '' }}
         run: >
           dbt docs generate
+          --target docs
           --target-path target/pro
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
           --exclude 'source:account_usage_backlog.*' tag:backlog
