@@ -158,13 +158,14 @@ def load_models(demo: bool, lookback_days: int):
         order by usage_date
     """, cache_key=f"dept:{db}.{sch}:{lb}"))
     if "usage_date" in dept.columns: dept["usage_date"] = pd.to_datetime(dept["usage_date"]).dt.date
-    dept = to_float(dept, ["total_cost_us
+    dept = to_float(dept, ["total_cost_usd"])  # <- fixed
+
     # Fallback: if department mart empty, derive from fct_daily_costs + local mapping seed
     if (dept is None or dept.empty) and (fct is not None and not fct.empty):
-        # try to load local seed
-        import pandas as pd, os
+        # try to load local seed (both pandas + os are already imported at top)
         mapping = None
-        for p in ("seeds/department_mapping.csv", os.path.join("app","department_mapping.csv"), "/mnt/data/department_mapping.csv", "department_mapping.csv"):
+        for p in ("seeds/department_mapping.csv", os.path.join("app","department_mapping.csv"),
+                  "/mnt/data/department_mapping.csv", "department_mapping.csv"):
             if os.path.exists(p):
                 try:
                     _m = pd.read_csv(p)
@@ -194,7 +195,6 @@ def load_models(demo: bool, lookback_days: int):
             dept = tmp.groupby(["department","usage_date"], as_index=False)["total_cost_usd"].sum().sort_values(["usage_date","department"])
         else:
             dept = pd.DataFrame(columns=["department","usage_date","total_cost_usd"])
-d"])
 
     fresh = lc(run_query(f"""
         select max(end_time) as last_end_time
