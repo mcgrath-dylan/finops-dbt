@@ -5,6 +5,7 @@ permissions:
 
 on:
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: pr-ci-${{ github.ref }}
@@ -17,6 +18,14 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+      # Use real Snowflake creds when available (first-party PRs)
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
 
     steps:
       - uses: actions/checkout@v4
@@ -37,42 +46,61 @@ jobs:
       - name: dbt deps (Base only)
         run: dbt deps
 
-      - name: Compile (Base)
+      - name: Detect if secrets are available
+        id: has_secrets
+        shell: bash
+        run: |
+          if [[ -z "${SNOWFLAKE_ACCOUNT}" || -z "${SNOWFLAKE_USER}" || -z "${SNOWFLAKE_PASSWORD}" ]]; then
+            echo "available=false" >> $GITHUB_OUTPUT
+          else
+            echo "available=true" >> $GITHUB_OUTPUT
+          fi
+
+      # -------- First-party PRs (with secrets): real compile against prod --------
+      - name: Compile (Base, prod)
+        if: steps.has_secrets.outputs.available == 'true'
         run: >
           dbt compile
-          --target docs
+          --target prod
           --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
           --fail-fast
 
       - name: Upload manifest (Base)
+        if: steps.has_secrets.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: manifest-base
           path: target/manifest.json
 
-      # Optional Pro compile when token is present
+      # ----- Optional Pro compile when token + secrets are present -----
       - name: Enable GitHub token for private packages (Pro)
-        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        if: steps.has_secrets.outputs.available == 'true' && env.PRO_REPO_TOKEN != ''
         run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
 
       - name: Add Pro package & deps
-        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        if: steps.has_secrets.outputs.available == 'true' && env.PRO_REPO_TOKEN != ''
         run: |
           cp packages.yml packages.base.yml
           printf "\n  - git: https://github.com/mcgrath-dylan/snowflake-finops-pro.git\n    revision: main\n" >> packages.yml
           dbt deps
 
-      - name: Compile (Pro)
-        if: ${{ env.PRO_REPO_TOKEN != '' }}
+      - name: Compile (Pro, prod)
+        if: steps.has_secrets.outputs.available == 'true' && env.PRO_REPO_TOKEN != ''
         run: >
           dbt compile
-          --target docs
+          --target prod
           --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
           --fail-fast
 
       - name: Upload manifest (Pro)
-        if: ${{ env.PRO_REPO_TOKEN != '' }}
+        if: steps.has_secrets.outputs.available == 'true' && env.PRO_REPO_TOKEN != ''
         uses: actions/upload-artifact@v4
         with:
           name: manifest-pro
           path: target/manifest.json
+
+      # -------- Forked PRs (no secrets): skip compile but pass --------
+      - name: Skip compile (no secrets in fork PR)
+        if: steps.has_secrets.outputs.available != 'true'
+        run: |
+          echo "No Snowflake secrets available (likely a fork PR). Skipping compile and marking success."
