@@ -196,10 +196,18 @@ def load_models(demo: bool, lookback_days: int):
         else:
             dept = pd.DataFrame(columns=["department","usage_date","total_cost_usd"])
 
-    fresh = lc(run_query(f"""
-        select max(end_time) as last_end_time
-        from {db}.account_usage.warehouse_metering_history
-    """, cache_key=f"fresh:{db}"))
+    AU_DB = os.getenv("ACCOUNT_USAGE_DATABASE", "SNOWFLAKE")
+    AU_SCHEMA = os.getenv("ACCOUNT_USAGE_SCHEMA", "ACCOUNT_USAGE")
+
+    fresh = pd.DataFrame()
+    try:
+        if not demo:  # only probe in Live
+            fresh = lc(run_query(
+                f"select max(END_TIME) as last_end_time from {AU_DB}.{AU_SCHEMA}.WAREHOUSE_METERING_HISTORY",
+                cache_key=f"fresh:{AU_DB}.{AU_SCHEMA}"
+            ))
+    except Exception:
+        fresh = pd.DataFrame(columns=["last_end_time"])
 
     return fct, dept, fresh
 
@@ -348,6 +356,8 @@ today = dt.date.today(); first_day = today.replace(day=1); dim = dim_count(today
 elapsed = (today - first_day).days + 1
 
 mtd_fct = fct[(fct["usage_date"] >= first_day) & (fct["usage_date"] <= today)].copy() if not fct.empty else pd.DataFrame()
+if not mtd_fct.empty and "total_cost" not in mtd_fct.columns and {"compute_cost","idle_cost"} <= set(mtd_fct.columns):
+    mtd_fct["total_cost"] = mtd_fct["compute_cost"].fillna(0) + mtd_fct["idle_cost"].fillna(0)
 mtd_total = float(mtd_fct.get("total_cost", pd.Series([0.0])).sum()) if not mtd_fct.empty else 0.0
 forecast_month = (mtd_total / max(elapsed, 1)) * dim if mtd_total > 0 else 0.0
 forecast_month = max(forecast_month, mtd_total)
