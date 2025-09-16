@@ -5,7 +5,7 @@ exposures:
     type: application
     maturity: medium
     url: "https://mcgrath-dylan.github.io/finops-dbt/base/"
-    description: "Read-only Streamlit app visualizing FinOps marts; Pro surfaces candidates."
+    description: "Read-only Streamlit app visualizing FinOps marts; Pro surfaces candidates. Data recency monitored with 48h warn / 96h error Account Usage freshness thresholds."
     owner:
       name: Dylan McGrath
       email: mcgrath.fintech@gmail.com

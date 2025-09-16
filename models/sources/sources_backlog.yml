@@ -6,6 +6,8 @@ sources:
   - name: account_usage_backlog
     database: "{{ var('account_usage_database', 'SNOWFLAKE') }}"
     schema: "{{ var('account_usage_schema', 'ACCOUNT_USAGE') }}"
+    config:
+      docs: { show: false }
     tables:
       - name: STORAGE_USAGE
       - name: DATABASE_STORAGE_USAGE_HISTORY
