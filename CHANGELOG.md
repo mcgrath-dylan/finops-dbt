@@ -6,7 +6,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.2.0] - 2025-09-16
+---
+
+## [v1.2.0] — 2025-09-16
 ### Added
 - Dept-aware budget vs actual mart.
 - AU freshness thresholds (warn 48h / error 96h).
@@ -14,3 +16,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - App now reads Live budget table with CSV fallback and shows Budget (MTD) and % Used (MTD) KPIs.
+
+---
+
+## [v1.1.0] — 2025-09-12
+### Added
+- **dbt Core 1.10 project** with layered models `stg_` → `int_` → `marts` plus `dim_department`.
+- **Authoritative daily spend marts:** `models/marts/finance/fct_daily_costs.sql`, `fct_cost_by_department.sql`, `fct_cost_trend.sql`, `fct_budget_vs_actual.sql`.
+- **Demo Mode** via seeds (`seeds/department_mapping.csv`, `seeds/budget_daily.csv`, `seeds/metering_demo_seed.csv`) and a `DEMO` schema overlay.
+- **Docs & lineage publishing** using GitHub Actions to `gh-pages` at `/base/` (and `/pro/` when Pro is enabled).
+- **Exposure** for the app: `models/exposures.yml` (`finops_streamlit_app`) with owner metadata.
+- **Streamlit app** (`app/streamlit_app.py`) with KPIs (MTD spend, monthly forecast), trends, and top departments.
+- **Monitor view** (`models/monitors/monitor_freshness_check.sql`) to surface latest metering hour.
+
+### Changed
+- N/A
