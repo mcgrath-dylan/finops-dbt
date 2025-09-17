@@ -9,11 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [1.3.0] - 2025-09-17
+### Added
+- Shared `ntz_hour` macro to normalize hour bucketing to `timestamp_ntz` across staging and intermediate models.
+
 ### Changed
-- Normalized warehouse metering and query staging to `usage_hour_ntz` with usage dates derived from NTZ hours for time-consistent joins.
-- Applied hour-level incremental watermarks with a 1-hour lookback to staging and `int_hourly_compute_costs` to ensure idempotent reruns and preserve `cost_hour_key` uniqueness.
+- Normalized warehouse metering and query staging to derive `usage_hour_ntz` from NTZ-cast timestamps with usage dates sourced from that hour.
+- Applied hour-level incremental watermarks with a one-hour lookback to staging and `int_hourly_compute_costs` to keep reruns idempotent while preserving surrogate key uniqueness.
 - Updated CI profile defaults to honor `DBT_TARGET`/`DBT_THREADS` env vars while defaulting to four threads for demo/dev/live targets.
-- Added upgrade-safe pre-hooks that backfill NTZ hour, usage_date, warehouse_id, and surrogate keys so existing incremental tables adopt the new schema without manual refreshes.
 
 ---
 

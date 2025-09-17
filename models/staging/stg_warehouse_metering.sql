@@ -1,48 +1,10 @@
-{% set metering_pre_hooks = [] %}
-{% if execute %}
-  {% set existing_relation = adapter.get_relation(database=this.database, schema=this.schema, identifier=this.identifier) %}
-  {% if existing_relation %}
-    {% set existing_relation_str = existing_relation.render() %}
-    {% set existing_columns = adapter.get_columns_in_relation(existing_relation) %}
-    {% set existing_column_names = [] %}
-    {% for col in existing_columns %}
-      {% do existing_column_names.append(col.name | lower) %}
-    {% endfor %}
-
-    {% if 'usage_hour_ntz' not in existing_column_names %}
-      {% do metering_pre_hooks.append("alter table " ~ existing_relation_str ~ " add column usage_hour_ntz timestamp_ntz") %}
-    {% endif %}
-
-    {% do metering_pre_hooks.append(
-        "update " ~ existing_relation_str ~ " set usage_hour_ntz = date_trunc('hour', hour_end::timestamp_ntz) "
-        ~ "where usage_hour_ntz is null or usage_hour_ntz is distinct from date_trunc('hour', hour_end::timestamp_ntz)"
-    ) %}
-
-    {% do metering_pre_hooks.append(
-        "update " ~ existing_relation_str ~ " set usage_date = cast(date_trunc('hour', hour_end::timestamp_ntz) as date) "
-        ~ "where usage_date is distinct from cast(date_trunc('hour', hour_end::timestamp_ntz) as date)"
-    ) %}
-  {% endif %}
-{% endif %}
-
 {{
     config(
         materialized='incremental',
         unique_key='metering_id',
-        on_schema_change='sync_all_columns',
-        pre_hook=metering_pre_hooks
+        on_schema_change='sync_all_columns'
     )
 }}
-
-{% set existing_cols = [] %}
-{% if execute and is_incremental() %}
-  {% set existing_cols = adapter.get_columns_in_relation(this) %}
-{% endif %}
-{% set existing_col_names = [] %}
-{% for col in existing_cols %}
-  {% do existing_col_names.append(col.name | lower) %}
-{% endfor %}
-{% set has_usage_hour_ntz = 'usage_hour_ntz' in existing_col_names %}
 
 -- Authoritative (ACCOUNT_USAGE) or Demo overlay via macro
 with source as (
@@ -50,22 +12,12 @@ with source as (
     from {{ metering_relation() }}
     where START_TIME >= dateadd('day', -{{ var('metering_history_days') }}, current_date())
     {% if is_incremental() %}
-      and date_trunc('hour', END_TIME::timestamp_ntz) >= (
+      and {{ ntz_hour('END_TIME') }} >= (
           select coalesce(
-              dateadd(
-                  'hour',
-                  -1,
-                  max(
-                      {% if has_usage_hour_ntz %}
-                          t.usage_hour_ntz
-                      {% else %}
-                          t.hour_end::timestamp_ntz
-                      {% endif %}
-                  )
-              ),
+              dateadd('hour', -1, max(usage_hour_ntz)),
               '1970-01-01'::timestamp_ntz
           )
-          from {{ this }} as t
+          from {{ this }}
       )
     {% endif %}
 ),
@@ -74,10 +26,10 @@ with source as (
 normalized as (
     select
         -- keys & time (normalize to NTZ hour)
-        date_trunc('hour', END_TIME::timestamp_ntz) as usage_hour_ntz,
-        date_trunc('hour', START_TIME::timestamp_ntz) as hour_start,
-        date_trunc('hour', END_TIME::timestamp_ntz) as hour_end,
-        cast(date_trunc('hour', END_TIME::timestamp_ntz) as date) as usage_date,
+        {{ ntz_hour('END_TIME') }} as usage_hour_ntz,
+        {{ ntz_hour('START_TIME') }} as hour_start,
+        {{ ntz_hour('END_TIME') }} as hour_end,
+        cast({{ ntz_hour('END_TIME') }} as date) as usage_date,
 
         -- warehouse
         WAREHOUSE_ID,
@@ -94,7 +46,7 @@ normalized as (
         (CREDITS_USED_CLOUD_SERVICES * {{ var('cost_per_credit') }}) as cloud_services_cost_usd,
 
         -- stable unique key per warehouse-hour
-        concat_ws('|', WAREHOUSE_ID::string, to_char(date_trunc('hour', END_TIME::timestamp_ntz), 'YYYY-MM-DD HH24:MI:SS')) as metering_id,
+        concat_ws('|', WAREHOUSE_ID::string, to_char({{ ntz_hour('END_TIME') }}, 'YYYY-MM-DD HH24:MI:SS')) as metering_id,
 
         -- cast to ntz for stability downstream
         cast(current_timestamp() as timestamp_ntz) as _loaded_at
