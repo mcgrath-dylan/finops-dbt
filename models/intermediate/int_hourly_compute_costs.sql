@@ -28,7 +28,7 @@
     {% if 'hour_start' in existing_column_names %}
       {% set backfill_usage_sql %}
         update {{ existing_relation }}
-        set usage_hour_ntz = coalesce(usage_hour_ntz, {{ ntz_hour('hour_start') }})
+        set usage_hour_ntz = coalesce(usage_hour_ntz, date_trunc('hour', hour_start::timestamp_ntz))
         where usage_hour_ntz is null
       {% endset %}
       {% do run_query(backfill_usage_sql) %}
@@ -41,7 +41,7 @@
         from {{ ref('stg_warehouse_metering') }} as src
         where target.warehouse_id is null
           and target.warehouse_name = src.warehouse_name
-          and coalesce(target.usage_hour_ntz, {{ ntz_hour('target.hour_start') }}) = coalesce(src.usage_hour_ntz, {{ ntz_hour('src.hour_end') }})
+          and coalesce(target.usage_hour_ntz, date_trunc('hour', target.hour_start::timestamp_ntz)) = coalesce(src.usage_hour_ntz, date_trunc('hour', src.hour_end::timestamp_ntz))
       {% endset %}
       {% do run_query(backfill_wh_sql) %}
     {% endif %}

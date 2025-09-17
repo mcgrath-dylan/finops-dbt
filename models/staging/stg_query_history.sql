@@ -29,8 +29,8 @@
     {% if 'end_time' in existing_column_names %}
       {% set backfill_sql %}
         update {{ existing_relation }}
-        set usage_hour_ntz = coalesce(usage_hour_ntz, {{ ntz_hour('end_time') }}),
-            usage_date = coalesce(usage_date, cast({{ ntz_hour('end_time') }} as date))
+        set usage_hour_ntz = coalesce(usage_hour_ntz, date_trunc('hour', end_time::timestamp_ntz)),
+            usage_date = coalesce(usage_date, cast(date_trunc('day', end_time::timestamp_ntz) as date))
         where usage_hour_ntz is null
            or usage_date is null
       {% endset %}
@@ -55,7 +55,7 @@ with source as (
     where START_TIME >= dateadd('day', -{{ var('query_history_days') }}, current_date())
     {% if is_incremental() %}
       {% if query_history_watermark_column == 'usage_hour_ntz' %}
-        and {{ ntz_hour('END_TIME') }} >= (
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= (
             select coalesce(
                 dateadd('hour', -1, max(usage_hour_ntz)),
                 '1970-01-01'::timestamp_ntz
@@ -63,7 +63,7 @@ with source as (
             from {{ this }}
         )
       {% elif query_history_watermark_column == 'usage_date' %}
-        and {{ ntz_hour('END_TIME') }} >= (
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= (
             select coalesce(
                 dateadd('day', -1, max(usage_date)::timestamp_ntz),
                 '1970-01-01'::timestamp_ntz
@@ -71,7 +71,7 @@ with source as (
             from {{ this }}
         )
       {% else %}
-        and {{ ntz_hour('END_TIME') }} >= '1970-01-01'::timestamp_ntz
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= '1970-01-01'::timestamp_ntz
       {% endif %}
     {% endif %}
 ),
@@ -86,9 +86,11 @@ filtered as (
 transformed as (
     select
         -- Keys & time
-        QUERY_ID                                    as query_id,
-        {{ ntz_hour('END_TIME') }}                   as usage_hour_ntz,
-        cast({{ ntz_hour('END_TIME') }} as date)     as usage_date,
+        QUERY_ID                                                     as query_id,
+        date_trunc('hour', END_TIME::timestamp_ntz)                   as usage_hour_ntz,
+        date_trunc('hour', START_TIME::timestamp_ntz)                 as hour_start_ntz,
+        date_trunc('hour', END_TIME::timestamp_ntz)                   as hour_end_ntz,
+        cast(date_trunc('day', END_TIME::timestamp_ntz) as date)      as usage_date,
         START_TIME,
         END_TIME,
 
