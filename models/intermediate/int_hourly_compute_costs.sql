@@ -6,11 +6,34 @@
     )
 }}
 
+{% set existing_cols = [] %}
+{% if execute and is_incremental() %}
+  {% set existing_cols = adapter.get_columns_in_relation(this) %}
+{% endif %}
+{% set existing_col_names = [] %}
+{% for col in existing_cols %}
+  {% do existing_col_names.append(col.name | lower) %}
+{% endfor %}
+{% set has_usage_hour_ntz = 'usage_hour_ntz' in existing_col_names %}
+
 with metering as (
     select * from {{ ref('stg_warehouse_metering') }}
     {% if is_incremental() %}
         where usage_hour_ntz >= (
-            select coalesce(dateadd('hour', -1, max(t.usage_hour_ntz)), '1970-01-01'::timestamp_ntz)
+            select coalesce(
+                dateadd(
+                    'hour',
+                    -1,
+                    max(
+                        {% if has_usage_hour_ntz %}
+                            t.usage_hour_ntz
+                        {% else %}
+                            t.hour_start::timestamp_ntz
+                        {% endif %}
+                    )
+                ),
+                '1970-01-01'::timestamp_ntz
+            )
             from {{ this }} as t
         )
     {% endif %}
@@ -27,7 +50,20 @@ queries as (
     from {{ ref('stg_query_history') }}
     {% if is_incremental() %}
         where usage_hour_ntz >= (
-            select coalesce(dateadd('hour', -1, max(t.usage_hour_ntz)), '1970-01-01'::timestamp_ntz)
+            select coalesce(
+                dateadd(
+                    'hour',
+                    -1,
+                    max(
+                        {% if has_usage_hour_ntz %}
+                            t.usage_hour_ntz
+                        {% else %}
+                            t.hour_start::timestamp_ntz
+                        {% endif %}
+                    )
+                ),
+                '1970-01-01'::timestamp_ntz
+            )
             from {{ this }} as t
         )
     {% endif %}

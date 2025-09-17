@@ -7,13 +7,36 @@
     )
 }}
 
+{% set existing_cols = [] %}
+{% if execute and is_incremental() %}
+  {% set existing_cols = adapter.get_columns_in_relation(this) %}
+{% endif %}
+{% set existing_col_names = [] %}
+{% for col in existing_cols %}
+  {% do existing_col_names.append(col.name | lower) %}
+{% endfor %}
+{% set has_usage_hour_ntz = 'usage_hour_ntz' in existing_col_names %}
+
 with source as (
     select *
     from {{ source('account_usage', 'QUERY_HISTORY') }}
     where START_TIME >= dateadd('day', -{{ var('query_history_days') }}, current_date())
     {% if is_incremental() %}
       and date_trunc('hour', END_TIME::timestamp_ntz) >= (
-          select coalesce(dateadd('hour', -1, max(t.usage_hour_ntz)), '1970-01-01'::timestamp_ntz)
+          select coalesce(
+              dateadd(
+                  'hour',
+                  -1,
+                  max(
+                      {% if has_usage_hour_ntz %}
+                          t.usage_hour_ntz
+                      {% else %}
+                          date_trunc('hour', t.end_time::timestamp_ntz)
+                      {% endif %}
+                  )
+              ),
+              '1970-01-01'::timestamp_ntz
+          )
           from {{ this }} as t
       )
     {% endif %}
