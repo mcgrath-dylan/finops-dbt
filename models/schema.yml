@@ -59,8 +59,18 @@ models:
         data_type: varchar
       - name: _loaded_at           # cast(current_timestamp() as timestamp_ntz)
         data_type: timestamp_ntz
+  - name: stg_warehouse_metering
+    columns:
+      - name: usage_hour_ntz
+        tests: [not_null]
+  - name: stg_query_history
+    columns:
+      - name: usage_hour_ntz
+        tests: [not_null]
   - name: int_hourly_compute_costs
     columns:
+      - name: usage_hour_ntz
+        tests: [not_null]
       - name: cost_hour_key
         tests:
           - not_null

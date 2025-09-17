@@ -12,8 +12,8 @@ with source as (
     from {{ metering_relation() }}
     where START_TIME >= dateadd('day', -{{ var('metering_history_days') }}, current_date())
     {% if is_incremental() %}
-      and date(END_TIME) >= (
-          select coalesce(max(t.usage_date), '1900-01-01'::date)
+      and date_trunc('hour', END_TIME::timestamp_ntz) >= (
+          select coalesce(dateadd('hour', -1, max(t.usage_hour_ntz)), '1970-01-01'::timestamp_ntz)
           from {{ this }} as t
       )
     {% endif %}
@@ -22,10 +22,11 @@ with source as (
 -- Normalize and add cost ($ = credits * cost_per_credit)
 normalized as (
     select
-        -- keys & time (ACCOUNT_USAGE is LTZ; preserve LTZ for consistency)
-        date_trunc('hour', START_TIME)              as hour_start,
-        date_trunc('hour', END_TIME)                as hour_end,
-        cast(date_trunc('day', START_TIME) as date) as usage_date,
+        -- keys & time (normalize to NTZ hour)
+        date_trunc('hour', END_TIME::timestamp_ntz) as usage_hour_ntz,
+        date_trunc('hour', START_TIME::timestamp_ntz) as hour_start,
+        date_trunc('hour', END_TIME::timestamp_ntz) as hour_end,
+        cast(date_trunc('hour', END_TIME::timestamp_ntz) as date) as usage_date,
 
         -- warehouse
         WAREHOUSE_ID,
@@ -42,7 +43,7 @@ normalized as (
         (CREDITS_USED_CLOUD_SERVICES * {{ var('cost_per_credit') }}) as cloud_services_cost_usd,
 
         -- stable unique key per warehouse-hour
-        concat_ws('|', WAREHOUSE_ID::string, to_char(END_TIME, 'YYYY-MM-DD HH24:MI:SS')) as metering_id,
+        concat_ws('|', WAREHOUSE_ID::string, to_char(date_trunc('hour', END_TIME::timestamp_ntz), 'YYYY-MM-DD HH24:MI:SS')) as metering_id,
 
         -- cast to ntz for stability downstream
         cast(current_timestamp() as timestamp_ntz) as _loaded_at
@@ -50,6 +51,7 @@ normalized as (
 )
 
 select
+    usage_hour_ntz,
     hour_start,
     hour_end,
     usage_date,

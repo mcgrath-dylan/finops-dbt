@@ -2,29 +2,32 @@
     config(
         materialized='incremental',
         unique_key='cost_hour_key',
-        on_schema_change='fail'
+        on_schema_change='sync_all_columns'
     )
 }}
 
 with metering as (
     select * from {{ ref('stg_warehouse_metering') }}
     {% if is_incremental() %}
-        where hour_start > (select max(hour_start) from {{ this }})
+        where usage_hour_ntz >= (
+            select coalesce(dateadd('hour', -1, max(t.usage_hour_ntz)), '1970-01-01'::timestamp_ntz)
+            from {{ this }} as t
+        )
     {% endif %}
 ),
 
 queries as (
-    select 
+    select
         warehouse_name,
-        date_trunc('hour', START_TIME) as usage_hour,
+        usage_hour_ntz,
         count(*) as query_count,
         sum(total_elapsed_seconds) as total_runtime_seconds,
         sum(gb_scanned) as total_gb_scanned,
         count(distinct user_name) as unique_users
     from {{ ref('stg_query_history') }}
     {% if is_incremental() %}
-        where date_trunc('hour', END_TIME) >= (
-            select coalesce(max(t.hour_start), '1900-01-01'::timestamp)
+        where usage_hour_ntz >= (
+            select coalesce(dateadd('hour', -1, max(t.usage_hour_ntz)), '1970-01-01'::timestamp_ntz)
             from {{ this }} as t
         )
     {% endif %}
@@ -33,9 +36,11 @@ queries as (
 
 hourly_costs as (
     select
+        m.usage_hour_ntz,
         m.hour_start,
         m.hour_end,
-        m.usage_date,
+        cast(m.usage_hour_ntz as date) as usage_date,
+        m.warehouse_id,
         m.warehouse_name,
         
         -- Actual costs from metering (authoritative)
@@ -74,14 +79,14 @@ hourly_costs as (
         end as idle_cost_usd,
         
         -- Composite key
-        {{ dbt_utils.generate_surrogate_key(['m.warehouse_name', 'm.hour_start']) }} as cost_hour_key,
-        
+        {{ dbt_utils.generate_surrogate_key(['m.warehouse_id', 'm.usage_hour_ntz']) }} as cost_hour_key,
+
         current_timestamp() as _loaded_at
-        
+
     from metering m
     left join queries q
         on m.warehouse_name = q.warehouse_name
-       and m.hour_start    = q.usage_hour
+       and m.usage_hour_ntz = q.usage_hour_ntz
 )
 
 select * from hourly_costs

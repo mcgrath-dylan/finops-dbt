@@ -12,8 +12,8 @@ with source as (
     from {{ source('account_usage', 'QUERY_HISTORY') }}
     where START_TIME >= dateadd('day', -{{ var('query_history_days') }}, current_date())
     {% if is_incremental() %}
-      and date(END_TIME) >= (
-          select coalesce(max(t.usage_date), '1900-01-01'::date)
+      and date_trunc('hour', END_TIME::timestamp_ntz) >= (
+          select coalesce(dateadd('hour', -1, max(t.usage_hour_ntz)), '1970-01-01'::timestamp_ntz)
           from {{ this }} as t
       )
     {% endif %}
@@ -23,7 +23,8 @@ transformed as (
     select
         -- Keys & time
         QUERY_ID                                           as query_id,
-        cast(date_trunc('day', START_TIME) as date)        as usage_date,
+        date_trunc('hour', END_TIME::timestamp_ntz)        as usage_hour_ntz,
+        cast(date_trunc('hour', END_TIME::timestamp_ntz) as date) as usage_date,
         START_TIME,
         END_TIME,
 
