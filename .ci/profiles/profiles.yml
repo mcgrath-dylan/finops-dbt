@@ -42,3 +42,17 @@ snowflake_finops:
       schema: "{{ env_var('SNOWFLAKE_SCHEMA') }}"
       client_session_keep_alive: false
       query_tag: "finops-dbt-live"
+
+    # Backwards-compatible alias for CI workflows still invoking --target prod.
+    prod:
+      type: snowflake
+      threads: "{{ env_var('DBT_THREADS', 4) }}"
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA') }}"
+      client_session_keep_alive: false
+      query_tag: "finops-dbt-live"
