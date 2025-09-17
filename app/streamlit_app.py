@@ -196,19 +196,62 @@ def load_models(demo: bool, lookback_days: int):
         else:
             dept = pd.DataFrame(columns=["department","usage_date","total_cost_usd"])
 
-    fresh = lc(run_query(f"""
-        select max(end_time) as last_end_time
-        from {db}.account_usage.warehouse_metering_history
-    """, cache_key=f"fresh:{db}"))
+    AU_DB = os.getenv("ACCOUNT_USAGE_DATABASE", "SNOWFLAKE")
+    AU_SCHEMA = os.getenv("ACCOUNT_USAGE_SCHEMA", "ACCOUNT_USAGE")
+
+    fresh = pd.DataFrame()
+    try:
+        if not demo:  # only probe in Live
+            fresh = lc(run_query(
+                f"select max(END_TIME) as last_end_time from {AU_DB}.{AU_SCHEMA}.WAREHOUSE_METERING_HISTORY",
+                cache_key=f"fresh:{AU_DB}.{AU_SCHEMA}"
+            ))
+    except Exception:
+        fresh = pd.DataFrame(columns=["last_end_time"])
 
     return fct, dept, fresh
 
-@st.cache_data(show_spinner=False)
-def load_budget() -> Optional[pd.DataFrame]:
-    for p in ("budget_daily.csv", os.path.join("app","budget_daily.csv"), "/mnt/data/budget_daily.csv"):
+@st.cache_data(ttl=60, show_spinner=False)
+def load_budget(demo: bool) -> pd.DataFrame:
+    cp = get_conn_params(); db = cp.get("database", ""); sch = active_schema(demo)
+    if sf is not None and db and sch:
+        try:
+            live = lc(run_query(
+                f"""
+                    select date, department, budget_usd
+                    from {db}.{sch}.budget_daily
+                """,
+                cache_key=f"budget:{db}.{sch}"
+            ))
+            if not live.empty:
+                if "date" in live.columns:
+                    live["date"] = pd.to_datetime(live["date"]).dt.date
+                live = to_float(live, ["budget_usd"])
+                if "department" in live.columns:
+                    live["department"] = live["department"].astype(str).str.strip()
+                required = {"date","department","budget_usd"}
+                if required.issubset(set(live.columns)):
+                    return live[["date","department","budget_usd"]]
+        except Exception:
+            pass
+
+    for p in ("seeds/budget_daily.csv", "budget_daily.csv", os.path.join("app","budget_daily.csv"), "/mnt/data/budget_daily.csv"):
         if os.path.exists(p):
-            b = pd.read_csv(p); b["date"] = pd.to_datetime(b["date"]).dt.date; return b
-    return None
+            try:
+                raw = pd.read_csv(p)
+                cols = {c.lower(): c for c in raw.columns}
+                date_col = cols.get("date"); dept_col = cols.get("department"); usd_col = cols.get("budget_usd")
+                if not (date_col and dept_col and usd_col):
+                    continue
+                out = raw[[date_col, dept_col, usd_col]].copy()
+                out.columns = ["date","department","budget_usd"]
+                out["date"] = pd.to_datetime(out["date"]).dt.date
+                out["department"] = out["department"].astype(str).str.strip()
+                out["budget_usd"] = pd.to_numeric(out["budget_usd"], errors="coerce").fillna(0.0).astype(float)
+                return out
+            except Exception:
+                continue
+    return pd.DataFrame(columns=["date","department","budget_usd"])
 
 @st.cache_data(show_spinner=False)
 def load_current_warehouses():
@@ -260,7 +303,7 @@ def load_pro_hourly_soft(demo: bool, days: int, credit_threshold: float = 0.05) 
     df = to_float(df, ["idle_cost_adj","total_cost","compute_cost","total_hours","active_hours","credits_on_active_hours","total_days","active_days"])
     return df
 
-budget = load_budget()
+budget = pd.DataFrame(columns=["date","department","budget_usd"])
 
 # ---- styles ---------------------------------------------------------------
 st.markdown("""
@@ -308,10 +351,13 @@ with right:
 
 # ---- data -----------------------------------------------------------------
 fct, dept, fresh = load_models(demo_mode, days_shown)
+budget = load_budget(demo_mode)
 today = dt.date.today(); first_day = today.replace(day=1); dim = dim_count(today)
 elapsed = (today - first_day).days + 1
 
 mtd_fct = fct[(fct["usage_date"] >= first_day) & (fct["usage_date"] <= today)].copy() if not fct.empty else pd.DataFrame()
+if not mtd_fct.empty and "total_cost" not in mtd_fct.columns and {"compute_cost","idle_cost"} <= set(mtd_fct.columns):
+    mtd_fct["total_cost"] = mtd_fct["compute_cost"].fillna(0) + mtd_fct["idle_cost"].fillna(0)
 mtd_total = float(mtd_fct.get("total_cost", pd.Series([0.0])).sum()) if not mtd_fct.empty else 0.0
 forecast_month = (mtd_total / max(elapsed, 1)) * dim if mtd_total > 0 else 0.0
 forecast_month = max(forecast_month, mtd_total)
@@ -325,10 +371,22 @@ if not fct.empty and "idle_cost" in fct.columns:
 else:
     idle_wasted_last_n = None
 
-monthly_budget = None
-if budget is not None and not budget.empty:
-    month_mask = (budget["date"] >= first_day) & (budget["date"] <= first_day.replace(day=dim))
-    monthly_budget = float(budget.loc[month_mask, "budget_usd"].sum())
+budget_mtd = None
+if not budget.empty and "date" in budget.columns:
+    month_mask = (budget["date"] >= first_day) & (budget["date"] <= today)
+    budget_mtd = float(budget.loc[month_mask, "budget_usd"].sum())
+
+actual_mtd = None
+if not dept.empty and "usage_date" in dept.columns:
+    dept_mtd = dept[(dept["usage_date"] >= first_day) & (dept["usage_date"] <= today)]
+    if not dept_mtd.empty:
+        actual_mtd = float(dept_mtd.get("total_cost_usd", pd.Series([0.0])).sum())
+if actual_mtd is None:
+    actual_mtd = mtd_total
+
+pct_used_mtd = None
+if budget_mtd is not None and budget_mtd > 0:
+    pct_used_mtd = (actual_mtd / budget_mtd) * 100.0
 
 pro_hourly = load_pro_hourly_soft(demo_mode, days_shown) if enable_pro else pd.DataFrame()
 total_idle_est = None
@@ -380,6 +438,18 @@ kpi(row2[0], f"Idle Wasted (last {days_shown} days)",
 kpi(row2[1], "Idle (projected, month)",
     fmt_usd(total_idle_est) if total_idle_est is not None else "—",
     "From Pro hourly model (scaled)" if total_idle_est is not None else "Turn on Pro insights to see this")
+
+row3 = st.columns(2)
+pct_display = "—"
+if pct_used_mtd is not None:
+    try:
+        if not np.isnan(pct_used_mtd):
+            pct_display = f"{pct_used_mtd:.0f}%"
+    except Exception:
+        pct_display = f"{pct_used_mtd:.0f}%"
+
+kpi(row3[0], "Budget (MTD)", fmt_usd(budget_mtd), f"Sum through {today.strftime('%b %d')}")
+kpi(row3[1], "% Used (MTD)", pct_display, "Actual vs departmental budget")
 
 st.divider()
 

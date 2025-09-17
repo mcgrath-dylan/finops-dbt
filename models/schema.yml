@@ -59,3 +59,20 @@ models:
         data_type: varchar
       - name: _loaded_at           # cast(current_timestamp() as timestamp_ntz)
         data_type: timestamp_ntz
+  - name: int_hourly_compute_costs
+    columns:
+      - name: cost_hour_key
+        tests:
+          - not_null
+          - unique
+  - name: fct_budget_vs_actual
+    columns:
+      - name: usage_date
+        tests:
+          - not_null
+      - name: department
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [usage_date, department]

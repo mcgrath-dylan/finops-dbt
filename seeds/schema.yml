@@ -1,0 +1,14 @@
+version: 2
+seeds:
+  - name: budget_daily
+    description: Departmental day-level budget (USD). Demo seed; Live table preferred.
+    columns:
+      - name: date
+        tests: [not_null]
+      - name: department
+        tests: [not_null]
+      - name: budget_usd
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          combination_of_columns: [date, department]

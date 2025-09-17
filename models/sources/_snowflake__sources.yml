@@ -5,8 +5,10 @@ sources:
     description: Snowflake Account Usage schema
     database: "{{ var('account_usage_database', 'SNOWFLAKE') }}"
     schema: "{{ var('account_usage_schema', 'ACCOUNT_USAGE') }}"
+    loaded_at_field: END_TIME
+    freshness:
+      warn_after: {count: 48, period: hour}
+      error_after: {count: 96, period: hour}
     tables:
       - name: WAREHOUSE_METERING_HISTORY
-        loaded_at_field: END_TIME
       - name: QUERY_HISTORY
-        loaded_at_field: END_TIME
