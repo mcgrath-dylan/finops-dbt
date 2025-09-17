@@ -1,22 +1,105 @@
 
 
+
+
+
+  
+  
+    
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+
+    
+    
+
+    
+      
+      
+    
+
+    
+      
+    
+  
+
+
 with source as (
     select *
     from SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
     where START_TIME >= dateadd('day', -30, current_date())
     
-      and date(END_TIME) >= (
-          select coalesce(max(t.usage_date), '1900-01-01'::date)
-          from DM_AE_FINOPS_DB.STG.stg_query_history as t
-      )
+      
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= (
+            select coalesce(
+                dateadd('hour', -1, max(usage_hour_ntz)),
+                '1970-01-01'::timestamp_ntz
+            )
+            from DM_AE_FINOPS_DB.STG.stg_query_history
+        )
+      
     
+),
+
+filtered as (
+    select *
+    from source
+    where EXECUTION_STATUS = 'SUCCESS'
+      and WAREHOUSE_NAME is not null   -- only compute-bearing statements
 ),
 
 transformed as (
     select
         -- Keys & time
-        QUERY_ID                                           as query_id,
-        cast(date_trunc('day', START_TIME) as date)        as usage_date,
+        QUERY_ID                                                     as query_id,
+        date_trunc('hour', END_TIME::timestamp_ntz)                   as usage_hour_ntz,
+        date_trunc('hour', START_TIME::timestamp_ntz)                 as hour_start_ntz,
+        date_trunc('hour', END_TIME::timestamp_ntz)                   as hour_end_ntz,
+        cast(date_trunc('day', END_TIME::timestamp_ntz) as date)      as usage_date,
         START_TIME,
         END_TIME,
 
@@ -46,10 +129,8 @@ transformed as (
             else 'fast'
         end as runtime_category,
 
-        current_timestamp() as _loaded_at
-    from source
-    where EXECUTION_STATUS = 'SUCCESS'
-      and WAREHOUSE_NAME is not null   -- only compute-bearing statements
+        cast(current_timestamp() as timestamp_ntz) as _loaded_at
+    from filtered
 )
 
 select * from transformed
