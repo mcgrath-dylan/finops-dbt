@@ -7,18 +7,72 @@
     )
 }}
 
+{% set query_history_watermark_column = 'usage_hour_ntz' %}
+{% set existing_column_names = [] %}
+{% if is_incremental() and execute %}
+  {% set existing_relation = adapter.get_relation(database=this.database, schema=this.schema, identifier=this.identifier) %}
+  {% if existing_relation %}
+    {% set existing_columns = adapter.get_columns_in_relation(existing_relation) %}
+    {% for col in existing_columns %}
+      {% do existing_column_names.append(col.name | lower) %}
+    {% endfor %}
+
+    {% if 'usage_hour_ntz' not in existing_column_names %}
+      {% do run_query('alter table ' ~ existing_relation ~ ' add column usage_hour_ntz timestamp_ntz') %}
+      {% do existing_column_names.append('usage_hour_ntz') %}
+    {% endif %}
+    {% if 'usage_date' not in existing_column_names %}
+      {% do run_query('alter table ' ~ existing_relation ~ ' add column usage_date date') %}
+      {% do existing_column_names.append('usage_date') %}
+    {% endif %}
+
+    {% if 'end_time' in existing_column_names %}
+      {% set backfill_sql %}
+        update {{ existing_relation }}
+        set usage_hour_ntz = coalesce(usage_hour_ntz, {{ ntz_hour('end_time') }}),
+            usage_date = coalesce(usage_date, cast({{ ntz_hour('end_time') }} as date))
+        where usage_hour_ntz is null
+           or usage_date is null
+      {% endset %}
+      {% do run_query(backfill_sql) %}
+    {% endif %}
+
+    {% if 'usage_hour_ntz' in existing_column_names %}
+      {% set query_history_watermark_column = 'usage_hour_ntz' %}
+    {% elif 'usage_date' in existing_column_names %}
+      {% set query_history_watermark_column = 'usage_date' %}
+    {% else %}
+      {% set query_history_watermark_column = none %}
+    {% endif %}
+  {% else %}
+    {% set query_history_watermark_column = none %}
+  {% endif %}
+{% endif %}
+
 with source as (
     select *
     from {{ source('account_usage', 'QUERY_HISTORY') }}
     where START_TIME >= dateadd('day', -{{ var('query_history_days') }}, current_date())
     {% if is_incremental() %}
-      and {{ ntz_hour('END_TIME') }} >= (
-          select coalesce(
-              dateadd('hour', -1, max(usage_hour_ntz)),
-              '1970-01-01'::timestamp_ntz
-          )
-          from {{ this }}
-      )
+      {% if query_history_watermark_column == 'usage_hour_ntz' %}
+        and {{ ntz_hour('END_TIME') }} >= (
+            select coalesce(
+                dateadd('hour', -1, max(usage_hour_ntz)),
+                '1970-01-01'::timestamp_ntz
+            )
+            from {{ this }}
+        )
+      {% elif query_history_watermark_column == 'usage_date' %}
+        and {{ ntz_hour('END_TIME') }} >= (
+            select coalesce(
+                dateadd('day', -1, max(usage_date)::timestamp_ntz),
+                '1970-01-01'::timestamp_ntz
+            )
+            from {{ this }}
+        )
+      {% else %}
+        and {{ ntz_hour('END_TIME') }} >= '1970-01-01'::timestamp_ntz
+      {% endif %}
     {% endif %}
 ),
 

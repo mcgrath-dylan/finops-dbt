@@ -6,19 +6,73 @@
     )
 }}
 
+{% set metering_watermark_column = 'usage_hour_ntz' %}
+{% set existing_column_names = [] %}
+{% if is_incremental() and execute %}
+  {% set existing_relation = adapter.get_relation(database=this.database, schema=this.schema, identifier=this.identifier) %}
+  {% if existing_relation %}
+    {% set existing_columns = adapter.get_columns_in_relation(existing_relation) %}
+    {% for col in existing_columns %}
+      {% do existing_column_names.append(col.name | lower) %}
+    {% endfor %}
+
+    {% if 'usage_hour_ntz' not in existing_column_names %}
+      {% do run_query('alter table ' ~ existing_relation ~ ' add column usage_hour_ntz timestamp_ntz') %}
+      {% do existing_column_names.append('usage_hour_ntz') %}
+    {% endif %}
+    {% if 'usage_date' not in existing_column_names %}
+      {% do run_query('alter table ' ~ existing_relation ~ ' add column usage_date date') %}
+      {% do existing_column_names.append('usage_date') %}
+    {% endif %}
+
+    {% if 'hour_end' in existing_column_names %}
+      {% set backfill_sql %}
+        update {{ existing_relation }}
+        set usage_hour_ntz = coalesce(usage_hour_ntz, {{ ntz_hour('hour_end') }}),
+            usage_date = coalesce(usage_date, cast({{ ntz_hour('hour_end') }} as date))
+        where usage_hour_ntz is null
+           or usage_date is null
+      {% endset %}
+      {% do run_query(backfill_sql) %}
+    {% endif %}
+
+    {% if 'usage_hour_ntz' in existing_column_names %}
+      {% set metering_watermark_column = 'usage_hour_ntz' %}
+    {% elif 'hour_end' in existing_column_names %}
+      {% set metering_watermark_column = 'hour_end' %}
+    {% else %}
+      {% set metering_watermark_column = none %}
+    {% endif %}
+  {% else %}
+    {% set metering_watermark_column = none %}
+  {% endif %}
+{% endif %}
+
 -- Authoritative (ACCOUNT_USAGE) or Demo overlay via macro
 with source as (
     select *
     from {{ metering_relation() }}
     where START_TIME >= dateadd('day', -{{ var('metering_history_days') }}, current_date())
     {% if is_incremental() %}
-      and {{ ntz_hour('END_TIME') }} >= (
-          select coalesce(
-              dateadd('hour', -1, max(usage_hour_ntz)),
-              '1970-01-01'::timestamp_ntz
-          )
-          from {{ this }}
-      )
+      {% if metering_watermark_column == 'usage_hour_ntz' %}
+        and {{ ntz_hour('END_TIME') }} >= (
+            select coalesce(
+                dateadd('hour', -1, max(usage_hour_ntz)),
+                '1970-01-01'::timestamp_ntz
+            )
+            from {{ this }}
+        )
+      {% elif metering_watermark_column == 'hour_end' %}
+        and {{ ntz_hour('END_TIME') }} >= (
+            select coalesce(
+                dateadd('hour', -1, max(hour_end::timestamp_ntz)),
+                '1970-01-01'::timestamp_ntz
+            )
+            from {{ this }}
+        )
+      {% else %}
+        and {{ ntz_hour('END_TIME') }} >= '1970-01-01'::timestamp_ntz
+      {% endif %}
     {% endif %}
 ),
 
