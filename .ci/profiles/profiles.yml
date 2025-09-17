@@ -1,12 +1,12 @@
 # .ci/profiles/profiles.yml
 snowflake_finops:
-  # Default target for CI docs builds (no real creds required)
-  target: docs
+  # Default to demo but honor DBT_TARGET env var.
+  target: "{{ env_var('DBT_TARGET', 'demo') }}"
 
   outputs:
-    # Docs target: resolves env_var() with safe defaults so parse never fails.
-    docs:
+    demo:
       type: snowflake
+      threads: "{{ env_var('DBT_THREADS', 4) }}"
       account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'demo_account') }}"
       user: "{{ env_var('SNOWFLAKE_USER', 'demo_user') }}"
       password: "{{ env_var('SNOWFLAKE_PASSWORD', 'demo_password') }}"
@@ -15,12 +15,38 @@ snowflake_finops:
       database: "{{ env_var('SNOWFLAKE_DATABASE', 'DEMO_DB') }}"
       schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'DEMO_SCHEMA') }}"
       client_session_keep_alive: false
-      query_tag: "finops-dbt-docs"
+      query_tag: "finops-dbt-demo"
 
-    # Live target: strict envs, no defaults. Use this locally or
-    # if you later want CI to hit a real Snowflake for catalog runs.
+    dev:
+      type: snowflake
+      threads: "{{ env_var('DBT_THREADS', 4) }}"
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT', 'demo_account') }}"
+      user: "{{ env_var('SNOWFLAKE_USER', 'demo_user') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD', 'demo_password') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE', 'DEMO_ROLE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE', 'DEMO_WH') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE', 'DEMO_DB') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA', 'DEMO_SCHEMA') }}"
+      client_session_keep_alive: false
+      query_tag: "finops-dbt-dev"
+
+    live:
+      type: snowflake
+      threads: "{{ env_var('DBT_THREADS', 4) }}"
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"
+      role: "{{ env_var('SNOWFLAKE_ROLE') }}"
+      warehouse: "{{ env_var('SNOWFLAKE_WAREHOUSE') }}"
+      database: "{{ env_var('SNOWFLAKE_DATABASE') }}"
+      schema: "{{ env_var('SNOWFLAKE_SCHEMA') }}"
+      client_session_keep_alive: false
+      query_tag: "finops-dbt-live"
+
+    # Backwards-compatible alias for CI workflows still invoking --target prod.
     prod:
       type: snowflake
+      threads: "{{ env_var('DBT_THREADS', 4) }}"
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_USER') }}"
       password: "{{ env_var('SNOWFLAKE_PASSWORD') }}"

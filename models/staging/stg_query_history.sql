@@ -7,23 +7,90 @@
     )
 }}
 
+{% set query_history_watermark_column = 'usage_hour_ntz' %}
+{% set existing_column_names = [] %}
+{% if is_incremental() and execute %}
+  {% set existing_relation = adapter.get_relation(database=this.database, schema=this.schema, identifier=this.identifier) %}
+  {% if existing_relation %}
+    {% set existing_columns = adapter.get_columns_in_relation(existing_relation) %}
+    {% for col in existing_columns %}
+      {% do existing_column_names.append(col.name | lower) %}
+    {% endfor %}
+
+    {% if 'usage_hour_ntz' not in existing_column_names %}
+      {% do run_query('alter table ' ~ existing_relation ~ ' add column usage_hour_ntz timestamp_ntz') %}
+      {% do existing_column_names.append('usage_hour_ntz') %}
+    {% endif %}
+    {% if 'usage_date' not in existing_column_names %}
+      {% do run_query('alter table ' ~ existing_relation ~ ' add column usage_date date') %}
+      {% do existing_column_names.append('usage_date') %}
+    {% endif %}
+
+    {% if 'end_time' in existing_column_names %}
+      {% set backfill_sql %}
+        update {{ existing_relation }}
+        set usage_hour_ntz = coalesce(usage_hour_ntz, date_trunc('hour', end_time::timestamp_ntz)),
+            usage_date = coalesce(usage_date, cast(date_trunc('day', end_time::timestamp_ntz) as date))
+        where usage_hour_ntz is null
+           or usage_date is null
+      {% endset %}
+      {% do run_query(backfill_sql) %}
+    {% endif %}
+
+    {% if 'usage_hour_ntz' in existing_column_names %}
+      {% set query_history_watermark_column = 'usage_hour_ntz' %}
+    {% elif 'usage_date' in existing_column_names %}
+      {% set query_history_watermark_column = 'usage_date' %}
+    {% else %}
+      {% set query_history_watermark_column = none %}
+    {% endif %}
+  {% else %}
+    {% set query_history_watermark_column = none %}
+  {% endif %}
+{% endif %}
+
 with source as (
     select *
     from {{ source('account_usage', 'QUERY_HISTORY') }}
     where START_TIME >= dateadd('day', -{{ var('query_history_days') }}, current_date())
     {% if is_incremental() %}
-      and date(END_TIME) >= (
-          select coalesce(max(t.usage_date), '1900-01-01'::date)
-          from {{ this }} as t
-      )
+      {% if query_history_watermark_column == 'usage_hour_ntz' %}
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= (
+            select coalesce(
+                dateadd('hour', -1, max(usage_hour_ntz)),
+                '1970-01-01'::timestamp_ntz
+            )
+            from {{ this }}
+        )
+      {% elif query_history_watermark_column == 'usage_date' %}
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= (
+            select coalesce(
+                dateadd('day', -1, max(usage_date)::timestamp_ntz),
+                '1970-01-01'::timestamp_ntz
+            )
+            from {{ this }}
+        )
+      {% else %}
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= '1970-01-01'::timestamp_ntz
+      {% endif %}
     {% endif %}
+),
+
+filtered as (
+    select *
+    from source
+    where EXECUTION_STATUS = 'SUCCESS'
+      and WAREHOUSE_NAME is not null   -- only compute-bearing statements
 ),
 
 transformed as (
     select
         -- Keys & time
-        QUERY_ID                                           as query_id,
-        cast(date_trunc('day', START_TIME) as date)        as usage_date,
+        QUERY_ID                                                     as query_id,
+        date_trunc('hour', END_TIME::timestamp_ntz)                   as usage_hour_ntz,
+        date_trunc('hour', START_TIME::timestamp_ntz)                 as hour_start_ntz,
+        date_trunc('hour', END_TIME::timestamp_ntz)                   as hour_end_ntz,
+        cast(date_trunc('day', END_TIME::timestamp_ntz) as date)      as usage_date,
         START_TIME,
         END_TIME,
 
@@ -53,10 +120,8 @@ transformed as (
             else 'fast'
         end as runtime_category,
 
-        current_timestamp() as _loaded_at
-    from source
-    where EXECUTION_STATUS = 'SUCCESS'
-      and WAREHOUSE_NAME is not null   -- only compute-bearing statements
+        cast(current_timestamp() as timestamp_ntz) as _loaded_at
+    from filtered
 )
 
 select * from transformed

@@ -6,26 +6,84 @@
     )
 }}
 
+{% set metering_watermark_column = 'usage_hour_ntz' %}
+{% set existing_column_names = [] %}
+{% if is_incremental() and execute %}
+  {% set existing_relation = adapter.get_relation(database=this.database, schema=this.schema, identifier=this.identifier) %}
+  {% if existing_relation %}
+    {% set existing_columns = adapter.get_columns_in_relation(existing_relation) %}
+    {% for col in existing_columns %}
+      {% do existing_column_names.append(col.name | lower) %}
+    {% endfor %}
+
+    {% if 'usage_hour_ntz' not in existing_column_names %}
+      {% do run_query('alter table ' ~ existing_relation ~ ' add column usage_hour_ntz timestamp_ntz') %}
+      {% do existing_column_names.append('usage_hour_ntz') %}
+    {% endif %}
+    {% if 'usage_date' not in existing_column_names %}
+      {% do run_query('alter table ' ~ existing_relation ~ ' add column usage_date date') %}
+      {% do existing_column_names.append('usage_date') %}
+    {% endif %}
+
+    {% if 'hour_end' in existing_column_names %}
+      {% set backfill_sql %}
+        update {{ existing_relation }}
+        set usage_hour_ntz = coalesce(usage_hour_ntz, date_trunc('hour', hour_end::timestamp_ntz)),
+            usage_date = coalesce(usage_date, cast(date_trunc('day', hour_end::timestamp_ntz) as date))
+        where usage_hour_ntz is null
+           or usage_date is null
+      {% endset %}
+      {% do run_query(backfill_sql) %}
+    {% endif %}
+
+    {% if 'usage_hour_ntz' in existing_column_names %}
+      {% set metering_watermark_column = 'usage_hour_ntz' %}
+    {% elif 'hour_end' in existing_column_names %}
+      {% set metering_watermark_column = 'hour_end' %}
+    {% else %}
+      {% set metering_watermark_column = none %}
+    {% endif %}
+  {% else %}
+    {% set metering_watermark_column = none %}
+  {% endif %}
+{% endif %}
+
 -- Authoritative (ACCOUNT_USAGE) or Demo overlay via macro
 with source as (
     select *
     from {{ metering_relation() }}
     where START_TIME >= dateadd('day', -{{ var('metering_history_days') }}, current_date())
     {% if is_incremental() %}
-      and date(END_TIME) >= (
-          select coalesce(max(t.usage_date), '1900-01-01'::date)
-          from {{ this }} as t
-      )
+      {% if metering_watermark_column == 'usage_hour_ntz' %}
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= (
+            select coalesce(
+                dateadd('hour', -1, max(usage_hour_ntz)),
+                '1970-01-01'::timestamp_ntz
+            )
+            from {{ this }}
+        )
+      {% elif metering_watermark_column == 'hour_end' %}
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= (
+            select coalesce(
+                dateadd('hour', -1, max(hour_end::timestamp_ntz)),
+                '1970-01-01'::timestamp_ntz
+            )
+            from {{ this }}
+        )
+      {% else %}
+        and date_trunc('hour', END_TIME::timestamp_ntz) >= '1970-01-01'::timestamp_ntz
+      {% endif %}
     {% endif %}
 ),
 
 -- Normalize and add cost ($ = credits * cost_per_credit)
 normalized as (
     select
-        -- keys & time (ACCOUNT_USAGE is LTZ; preserve LTZ for consistency)
-        date_trunc('hour', START_TIME)              as hour_start,
-        date_trunc('hour', END_TIME)                as hour_end,
-        cast(date_trunc('day', START_TIME) as date) as usage_date,
+        -- keys & time (normalize to NTZ hour)
+        date_trunc('hour', END_TIME::timestamp_ntz) as usage_hour_ntz,
+        date_trunc('hour', START_TIME::timestamp_ntz) as hour_start,
+        date_trunc('hour', END_TIME::timestamp_ntz) as hour_end,
+        cast(date_trunc('day', END_TIME::timestamp_ntz) as date) as usage_date,
 
         -- warehouse
         WAREHOUSE_ID,
@@ -42,7 +100,7 @@ normalized as (
         (CREDITS_USED_CLOUD_SERVICES * {{ var('cost_per_credit') }}) as cloud_services_cost_usd,
 
         -- stable unique key per warehouse-hour
-        concat_ws('|', WAREHOUSE_ID::string, to_char(END_TIME, 'YYYY-MM-DD HH24:MI:SS')) as metering_id,
+        concat_ws('|', WAREHOUSE_ID::string, to_char(date_trunc('hour', END_TIME::timestamp_ntz), 'YYYY-MM-DD HH24:MI:SS')) as metering_id,
 
         -- cast to ntz for stability downstream
         cast(current_timestamp() as timestamp_ntz) as _loaded_at
@@ -50,6 +108,7 @@ normalized as (
 )
 
 select
+    usage_hour_ntz,
     hour_start,
     hour_end,
     usage_date,
