@@ -1,9 +1,37 @@
+{% set query_pre_hooks = [] %}
+{% if execute %}
+  {% set existing_relation = adapter.get_relation(database=this.database, schema=this.schema, identifier=this.identifier) %}
+  {% if existing_relation %}
+    {% set existing_relation_str = existing_relation.render() %}
+    {% set existing_columns = adapter.get_columns_in_relation(existing_relation) %}
+    {% set existing_column_names = [] %}
+    {% for col in existing_columns %}
+      {% do existing_column_names.append(col.name | lower) %}
+    {% endfor %}
+
+    {% if 'usage_hour_ntz' not in existing_column_names %}
+      {% do query_pre_hooks.append("alter table " ~ existing_relation_str ~ " add column usage_hour_ntz timestamp_ntz") %}
+    {% endif %}
+
+    {% do query_pre_hooks.append(
+        "update " ~ existing_relation_str ~ " set usage_hour_ntz = date_trunc('hour', end_time::timestamp_ntz) "
+        ~ "where usage_hour_ntz is null or usage_hour_ntz is distinct from date_trunc('hour', end_time::timestamp_ntz)"
+    ) %}
+
+    {% do query_pre_hooks.append(
+        "update " ~ existing_relation_str ~ " set usage_date = cast(date_trunc('hour', end_time::timestamp_ntz) as date) "
+        ~ "where usage_date is distinct from cast(date_trunc('hour', end_time::timestamp_ntz) as date)"
+    ) %}
+  {% endif %}
+{% endif %}
+
 {{
     config(
         materialized='incremental',
         unique_key='query_id',
         on_schema_change='sync_all_columns',
-        cluster_by=['usage_date', 'warehouse_name']
+        cluster_by=['usage_date', 'warehouse_name'],
+        pre_hook=query_pre_hooks
     )
 }}
 

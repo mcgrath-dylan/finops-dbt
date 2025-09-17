@@ -1,8 +1,36 @@
+{% set metering_pre_hooks = [] %}
+{% if execute %}
+  {% set existing_relation = adapter.get_relation(database=this.database, schema=this.schema, identifier=this.identifier) %}
+  {% if existing_relation %}
+    {% set existing_relation_str = existing_relation.render() %}
+    {% set existing_columns = adapter.get_columns_in_relation(existing_relation) %}
+    {% set existing_column_names = [] %}
+    {% for col in existing_columns %}
+      {% do existing_column_names.append(col.name | lower) %}
+    {% endfor %}
+
+    {% if 'usage_hour_ntz' not in existing_column_names %}
+      {% do metering_pre_hooks.append("alter table " ~ existing_relation_str ~ " add column usage_hour_ntz timestamp_ntz") %}
+    {% endif %}
+
+    {% do metering_pre_hooks.append(
+        "update " ~ existing_relation_str ~ " set usage_hour_ntz = date_trunc('hour', hour_end::timestamp_ntz) "
+        ~ "where usage_hour_ntz is null or usage_hour_ntz is distinct from date_trunc('hour', hour_end::timestamp_ntz)"
+    ) %}
+
+    {% do metering_pre_hooks.append(
+        "update " ~ existing_relation_str ~ " set usage_date = cast(date_trunc('hour', hour_end::timestamp_ntz) as date) "
+        ~ "where usage_date is distinct from cast(date_trunc('hour', hour_end::timestamp_ntz) as date)"
+    ) %}
+  {% endif %}
+{% endif %}
+
 {{
     config(
         materialized='incremental',
         unique_key='metering_id',
-        on_schema_change='sync_all_columns'
+        on_schema_change='sync_all_columns',
+        pre_hook=metering_pre_hooks
     )
 }}
 
