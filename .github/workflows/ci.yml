@@ -81,15 +81,17 @@ jobs:
         if: steps.has_secrets.outputs.available == 'true'
         run: |
           python - <<'PY'
-import json, sys, pathlib
-payload = pathlib.Path('freshness.json')
-if not payload.exists():
-    sys.exit('freshness.json missing')
-data = json.loads(payload.read_text())
-errors = [r for r in data.get('results', []) if r.get('status') == 'error']
-if errors:
-    failing = ", ".join(r.get('unique_id', 'unknown') for r in errors)
-    sys.exit(f"Freshness errors detected: {failing}")
+            import json, sys, pathlib
+
+            payload = pathlib.Path('freshness.json')
+            if not payload.exists():
+                sys.exit('freshness.json missing')
+
+            data = json.loads(payload.read_text())
+            errors = [r for r in data.get('results', []) if r.get('status') == 'error']
+            if errors:
+                failing = ", ".join(r.get('unique_id', 'unknown') for r in errors)
+                sys.exit(f"Freshness errors detected: {failing}")
 PY
 
       - name: Generate docs (live)
@@ -118,22 +120,25 @@ PY
         run: |
           set -euo pipefail
           python - <<'PY'
-import json, pathlib, textwrap
-target = pathlib.Path('target')
-target.mkdir(exist_ok=True)
-manifest = target / 'manifest.json'
-if not manifest.exists():
-    raise SystemExit('manifest.json missing; ensure dbt parse completed')
-(target / 'catalog.json').write_text(json.dumps({'nodes': {}, 'sources': {}, 'errors': []}, indent=2))
-(target / 'index.html').write_text(textwrap.dedent('''
-    <!doctype html>
-    <meta charset="utf-8">
-    <title>dbt docs placeholder</title>
-    <style>body{font-family:ui-sans-serif,system-ui,-apple-system;margin:48px auto;max-width:720px;padding:0 16px;line-height:1.5}code{background:#f4f4f5;padding:2px 4px;border-radius:4px}</style>
-    <h1>dbt docs artifact (manifest only)</h1>
-    <p>This pull request was opened without Snowflake credentials. The <code>manifest.json</code> below can still be reviewed locally.</p>
-    <p>To see the full docs experience, rerun CI with secrets available.</p>
-  '''))
+            import json, pathlib, textwrap
+
+            target = pathlib.Path('target')
+            target.mkdir(exist_ok=True)
+
+            manifest = target / 'manifest.json'
+            if not manifest.exists():
+                raise SystemExit('manifest.json missing; ensure dbt parse completed')
+
+            (target / 'catalog.json').write_text(json.dumps({'nodes': {}, 'sources': {}, 'errors': []}, indent=2))
+            (target / 'index.html').write_text(textwrap.dedent('''
+                <!doctype html>
+                <meta charset="utf-8">
+                <title>dbt docs placeholder</title>
+                <style>body{font-family:ui-sans-serif,system-ui,-apple-system;margin:48px auto;max-width:720px;padding:0 16px;line-height:1.5}code{background:#f4f4f5;padding:2px 4px;border-radius:4px}</style>
+                <h1>dbt docs artifact (manifest only)</h1>
+                <p>This pull request was opened without Snowflake credentials. The <code>manifest.json</code> below can still be reviewed locally.</p>
+                <p>To see the full docs experience, rerun CI with secrets available.</p>
+              '''))
 PY
           tar -czf dbt-docs.tar.gz target/manifest.json target/catalog.json target/index.html
 
