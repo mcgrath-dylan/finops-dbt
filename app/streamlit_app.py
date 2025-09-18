@@ -27,6 +27,7 @@ st.set_page_config(
 
 DOCS_URL = os.getenv("FINOPS_DOCS_URL", "https://mcgrath-dylan.github.io/finops-dbt/")
 REPO_URL  = os.getenv("FINOPS_REPO_URL",  "https://github.com/mcgrath-dylan/finops-dbt")
+PRO_PACK_FLAG = os.getenv("ENABLE_PRO_PACK", "false").strip().lower() in {"1", "true", "yes", "on"}
 
 # ---- utils ---------------------------------------------------------------
 def fmt_usd(x: Optional[float], decimals: int = 0) -> str:
@@ -253,6 +254,22 @@ def load_budget(demo: bool) -> pd.DataFrame:
                 continue
     return pd.DataFrame(columns=["date","department","budget_usd"])
 
+@st.cache_data(ttl=60, show_spinner=False)
+def load_budget_vs_actual_latest(demo: bool) -> Optional[dt.date]:
+    cp = get_conn_params(); db = cp.get("database", ""); sch = active_schema(demo)
+    if sf is None or not db or not sch:
+        return None
+    try:
+        latest = lc(run_query(
+            f"select max(usage_date) as usage_date from {db}.{sch}.fct_budget_vs_actual",
+            cache_key=f"bva_latest:{db}.{sch}"
+        ))
+        if not latest.empty and pd.notnull(latest.iloc[0].get("usage_date")):
+            return pd.to_datetime(latest.iloc[0]["usage_date"]).date()
+    except Exception:
+        pass
+    return None
+
 @st.cache_data(show_spinner=False)
 def load_current_warehouses():
     df = lc(run_query("show warehouses", cache_key="show_warehouses"))
@@ -335,7 +352,11 @@ with st.sidebar:
     st.subheader("Controls")
     days_shown = st.slider("Days shown", 7, 90, 30, 1)
     rows_to_show = st.slider("Rows to show", 3, 15, 8, 1)
-    enable_pro = st.toggle("Pro Insights", True)
+    if PRO_PACK_FLAG:
+        enable_pro = st.toggle("Pro Insights", True)
+    else:
+        enable_pro = False
+        st.caption("Set `ENABLE_PRO_PACK=true` to preview Pro tiles.")
     st.caption("Controls affect tiles, charts, and tables.")
     if st.button("Clear app cache"):
         clear_all_caches(); st.success("Caches cleared.")
@@ -352,6 +373,7 @@ with right:
 # ---- data -----------------------------------------------------------------
 fct, dept, fresh = load_models(demo_mode, days_shown)
 budget = load_budget(demo_mode)
+bva_latest = load_budget_vs_actual_latest(demo_mode)
 today = dt.date.today(); first_day = today.replace(day=1); dim = dim_count(today)
 elapsed = (today - first_day).days + 1
 
@@ -388,10 +410,34 @@ pct_used_mtd = None
 if budget_mtd is not None and budget_mtd > 0:
     pct_used_mtd = (actual_mtd / budget_mtd) * 100.0
 
-pro_hourly = load_pro_hourly_soft(demo_mode, days_shown) if enable_pro else pd.DataFrame()
+latest_usage_date: Optional[dt.date] = None
+if not fct.empty and "usage_date" in fct.columns:
+    try:
+        usage_series = pd.to_datetime(fct["usage_date"], errors="coerce").dropna()
+        if not usage_series.empty:
+            latest_usage_date = usage_series.max().date()
+    except Exception:
+        latest_usage_date = None
+
+variance_value = None
+variance_pct = None
+if budget_mtd is not None:
+    variance_value = actual_mtd - budget_mtd
+    if budget_mtd > 0:
+        variance_pct = (variance_value / budget_mtd) * 100.0
+
+freshness_hours = None
+if latest_usage_date is not None:
+    try:
+        delta = dt.datetime.utcnow() - dt.datetime.combine(latest_usage_date, dt.time())
+        freshness_hours = max(delta.total_seconds() / 3600.0, 0.0)
+    except Exception:
+        freshness_hours = None
+
+pro_hourly = load_pro_hourly_soft(demo_mode, days_shown) if (PRO_PACK_FLAG and enable_pro) else pd.DataFrame()
 total_idle_est = None
 rightsizing_df = pd.DataFrame()
-if enable_pro and not pro_hourly.empty:
+if PRO_PACK_FLAG and enable_pro and not pro_hourly.empty:
     dfp = pro_hourly.copy()
     dfp["idle_share"] = (100.0 * (dfp["idle_cost_adj"] / dfp["total_cost"].replace(0, np.nan))).clip(0,100).fillna(0.0)
     dfp["idle_month_est"] = (dfp["idle_cost_adj"] / max(days_shown,1)) * 30.0
@@ -439,17 +485,24 @@ kpi(row2[1], "Idle (projected, month)",
     fmt_usd(total_idle_est) if total_idle_est is not None else "—",
     "From Pro hourly model (scaled)" if total_idle_est is not None else "Turn on Pro insights to see this")
 
-row3 = st.columns(2)
-pct_display = "—"
-if pct_used_mtd is not None:
+row3 = st.columns(3)
+variance_display = "—" if variance_value is None else fmt_usd(variance_value, decimals=0)
+variance_note = "Variance shown when budget exists"
+if variance_value is not None and variance_pct is not None:
+    variance_note = f"{variance_pct:+.0f}% vs budget"
+elif variance_value is not None:
+    variance_note = "vs actual spend"
+
+fresh_display = "—"
+if freshness_hours is not None:
     try:
-        if not np.isnan(pct_used_mtd):
-            pct_display = f"{pct_used_mtd:.0f}%"
+        fresh_display = f"{freshness_hours:.1f}h"
     except Exception:
-        pct_display = f"{pct_used_mtd:.0f}%"
+        fresh_display = "—"
 
 kpi(row3[0], "Budget (MTD)", fmt_usd(budget_mtd), f"Sum through {today.strftime('%b %d')}")
-kpi(row3[1], "% Used (MTD)", pct_display, "Actual vs departmental budget")
+kpi(row3[1], "Variance (MTD)", variance_display, variance_note)
+kpi(row3[2], "Data Freshness (hrs)", fresh_display, "Max usage_date in fct_daily_costs")
 
 st.divider()
 
@@ -532,82 +585,84 @@ with R:
     render_top_table("Top Warehouses",
         fct[(fct["usage_date"] >= today - dt.timedelta(days=days_shown-1)) & (fct["usage_date"] <= today)] if not fct.empty else pd.DataFrame(),
         "warehouse_name","total_cost", add_budget=False)
-st.divider()
+show_for_export = pd.DataFrame()
+if PRO_PACK_FLAG:
+    st.divider()
 
-# ---- Pro -------------------------------------------------------------
-st.markdown(f'### Pro Insights <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
-with st.expander("How these numbers are computed?", expanded=False):
-    st.markdown(
-        f"""
-- **Source of truth:** `ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY` (Compute + Cloud Services).  
-- **Forecast (month):** prorates month-to-date run rate to a 30-day month.  
-- **Idle wasted (last {days_shown}):** sum of hourly idle cost over the last **{days_shown}** days.  
-- **Idle projected (monthly, Pro):** month-to-date hourly idle scaled to 30 days.  
+    # ---- Pro -------------------------------------------------------------
+    st.markdown(f'### Pro Insights <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>', unsafe_allow_html=True)
+    with st.expander("How these numbers are computed?", expanded=False):
+        st.markdown(
+            f"""
+- **Source of truth:** `ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY` (Compute + Cloud Services).
+- **Forecast (month):** prorates month-to-date run rate to a 30-day month.
+- **Idle wasted (last {days_shown}):** sum of hourly idle cost over the last **{days_shown}** days.
+- **Idle projected (monthly, Pro):** month-to-date hourly idle scaled to 30 days.
 - **Notes:** per-warehouse/attribution figures are estimates; authoritative spend comes from metering history.
-        """
-    )
-
-st.caption("")
-
-if enable_pro:
-    if pro_hourly.empty:
-        st.info("Pro models/hourly table not found in this schema or no data in window.")
-        show_for_export = pd.DataFrame()
-    else:
-        pdf = pro_hourly.copy()
-        pdf["Idle $/mo (est.)"] = (pdf["idle_cost_adj"] / max(days_shown,1) * 30.0).astype(float)
-        pdf["Idle share (%)"]  = (100.0 * (pdf["idle_cost_adj"] / pdf["total_cost"].replace(0, np.nan))).clip(0,100).fillna(0.0).round(0)
-        if not rightsizing_df.empty:
-            pdf = pdf.merge(rightsizing_df, on="warehouse_name", how="left")
-        show = pdf[["warehouse_name","Idle $/mo (est.)","Idle share (%)"]].rename(columns={"warehouse_name":"Warehouse"})\
-                 .sort_values("Idle $/mo (est.)", ascending=False).head(rows_to_show)
-        st.dataframe(
-            show.assign(**{"Idle $/mo (display)": show["Idle $/mo (est.)"].apply(lambda v: fmt_usd(float(v)))})[
-                ["Warehouse","Idle $/mo (display)","Idle share (%)"]
-            ],
-            hide_index=True, use_container_width=True,
-            column_config={
-                "Warehouse": st.column_config.TextColumn(width="medium"),
-                "Idle $/mo (display)": st.column_config.TextColumn(width="medium"),
-                "Idle share (%)": st.column_config.NumberColumn(format="%.0f%%", width="small"),
-            }
+            """
         )
-        show_for_export = pdf.rename(columns={"warehouse_name":"name"})[["name","Idle $/mo (est.)","Idle share (%)","rightsize_suggestion"]]\
-                              .sort_values("Idle $/mo (est.)", ascending=False)
 
-        # build actions first; only show toggle if there are real changes
-        current = load_current_warehouses()
-        sql_lines, notes = [], []
-        for _, r in show.iterrows():
-            wh = str(r["Warehouse"]).upper()
-            rec = None
-            try:
-                rec = rightsizing_df.loc[rightsizing_df["warehouse_name"].str.upper()==wh, "rightsize_suggestion"].iloc[0]
-            except Exception:
+    st.caption("")
+
+    if enable_pro:
+        if pro_hourly.empty:
+            st.info("Pro models/hourly table not found in this schema or no data in window.")
+        else:
+            pdf = pro_hourly.copy()
+            pdf["Idle $/mo (est.)"] = (pdf["idle_cost_adj"] / max(days_shown,1) * 30.0).astype(float)
+            pdf["Idle share (%)"]  = (100.0 * (pdf["idle_cost_adj"] / pdf["total_cost"].replace(0, np.nan))).clip(0,100).fillna(0.0).round(0)
+            if not rightsizing_df.empty:
+                pdf = pdf.merge(rightsizing_df, on="warehouse_name", how="left")
+            show = pdf[["warehouse_name","Idle $/mo (est.)","Idle share (%)"]].rename(columns={"warehouse_name":"Warehouse"})\
+                     .sort_values("Idle $/mo (est.)", ascending=False).head(rows_to_show)
+            st.dataframe(
+                show.assign(**{"Idle $/mo (display)": show["Idle $/mo (est.)"].apply(lambda v: fmt_usd(float(v)))})[
+                    ["Warehouse","Idle $/mo (display)","Idle share (%)"]
+                ],
+                hide_index=True, use_container_width=True,
+                column_config={
+                    "Warehouse": st.column_config.TextColumn(width="medium"),
+                    "Idle $/mo (display)": st.column_config.TextColumn(width="medium"),
+                    "Idle share (%)": st.column_config.NumberColumn(format="%.0f%%", width="small"),
+                }
+            )
+            show_for_export = pdf.rename(columns={"warehouse_name":"name"})[["name","Idle $/mo (est.)","Idle share (%)","rightsize_suggestion"]]\
+                                  .sort_values("Idle $/mo (est.)", ascending=False)
+
+            # build actions first; only show toggle if there are real changes
+            current = load_current_warehouses()
+            sql_lines, notes = [], []
+            for _, r in show.iterrows():
+                wh = str(r["Warehouse"]).upper()
                 rec = None
-            if rec:
-                notes.append(f"**{wh}** — {rec}. Change size in Snowsight or via Terraform/IaC policy.")
-                continue
-            idle_share = float(show.loc[show["Warehouse"]==r["Warehouse"], "Idle share (%)"].iloc[0])
-            mins = 5 if idle_share >= 40 else 10
-            target_sec = mins*60
-            cur_meta = current.get(wh, {})
-            current_sec = cur_meta.get("auto_suspend")
-            if current_sec != target_sec:
-                current_disp = (f"{int(current_sec/60)} min" if current_sec and current_sec>=60 else (f"{current_sec} sec" if current_sec else "—"))
-                notes.append(f"**{wh}** — Current: {current_disp} → Target: {mins} min")
-                sql_lines.append(f"ALTER WAREHOUSE {wh} SET AUTO_SUSPEND = {target_sec};")
+                try:
+                    rec = rightsizing_df.loc[rightsizing_df["warehouse_name"].str.upper()==wh, "rightsize_suggestion"].iloc[0]
+                except Exception:
+                    rec = None
+                if rec:
+                    notes.append(f"**{wh}** — {rec}. Change size in Snowsight or via Terraform/IaC policy.")
+                    continue
+                idle_share = float(show.loc[show["Warehouse"]==r["Warehouse"], "Idle share (%)"].iloc[0])
+                mins = 5 if idle_share >= 40 else 10
+                target_sec = mins*60
+                cur_meta = current.get(wh, {})
+                current_sec = cur_meta.get("auto_suspend")
+                if current_sec != target_sec:
+                    current_disp = (f"{int(current_sec/60)} min" if current_sec and current_sec>=60 else (f"{current_sec} sec" if current_sec else "—"))
+                    notes.append(f"**{wh}** — Current: {current_disp} → Target: {mins} min")
+                    sql_lines.append(f"ALTER WAREHOUSE {wh} SET AUTO_SUSPEND = {target_sec};")
 
-        if sql_lines or notes:
-            show_actions = st.toggle("Show change-set actions", False, help="Only shows changes when target differs from current setting")
-            if show_actions:
-                for n in notes: st.write(n)
-                if sql_lines:
-                    st.code("\n".join(sql_lines), language="sql")
-                    st.download_button("Download autosuspend SQL", "\n".join(sql_lines).encode("utf-8"),
-                                       file_name="autosuspend_changes.sql", mime="text/plain")
+            if sql_lines or notes:
+                show_actions = st.toggle("Show change-set actions", False, help="Only shows changes when target differs from current setting")
+                if show_actions:
+                    for n in notes: st.write(n)
+                    if sql_lines:
+                        st.code("\n".join(sql_lines), language="sql")
+                        st.download_button("Download autosuspend SQL", "\n".join(sql_lines).encode("utf-8"),
+                                           file_name="autosuspend_changes.sql", mime="text/plain")
+    else:
+        st.info("Toggle Pro Insights in the sidebar to surface projected idle and opportunity tiles.")
 else:
-    st.info("Upgrade to **Pro** for projected idle (monthly) and warehouse-level opportunities.")
     show_for_export = pd.DataFrame()
 
 st.divider()
@@ -657,6 +712,49 @@ insights_df = build_insights_csv()
 if not insights_df.empty:
     st.download_button("Download insights CSV", data=insights_df.to_csv(index=False).encode("utf-8"),
                        file_name="finops_insights.csv", mime="text/csv")
+
+st.divider()
+
+diag_rows = []
+def diag_entry(name: str, df: Optional[pd.DataFrame], date_col: Optional[str] = None, explicit_date: Optional[dt.date] = None) -> Dict[str, str]:
+    status = "✗"
+    latest = "—"
+    if df is not None and not df.empty and date_col and date_col in df.columns:
+        try:
+            series = pd.to_datetime(df[date_col], errors="coerce").dropna()
+            if not series.empty:
+                latest = series.max().date().isoformat()
+                status = "✅"
+        except Exception:
+            pass
+    elif explicit_date:
+        latest = explicit_date.isoformat()
+        status = "✅"
+    elif demo_mode:
+        latest = "Demo data"
+    return {"Table": name, "Status": status, "Latest usage_date": latest}
+
+diag_rows.append(diag_entry("fct_daily_costs", fct, "usage_date"))
+diag_rows.append(diag_entry("fct_cost_by_department", dept, "usage_date"))
+diag_rows.append(diag_entry("budget_daily", budget, "date"))
+diag_rows.append(diag_entry("fct_budget_vs_actual", None, explicit_date=bva_latest))
+diag_df = pd.DataFrame(diag_rows)
+
+st.markdown("### Diagnostics")
+conn_ctx = get_conn_params()
+ctx_db = conn_ctx.get("database") or ("DEMO_DB" if demo_mode else "—")
+ctx_schema = active_schema(demo_mode)
+st.caption(f"Context: `{ctx_db}`.`{ctx_schema}`")
+st.dataframe(
+    diag_df,
+    hide_index=True,
+    use_container_width=True,
+    column_config={
+        "Table": st.column_config.TextColumn(width="medium"),
+        "Status": st.column_config.TextColumn(width="small"),
+        "Latest usage_date": st.column_config.TextColumn(width="medium"),
+    }
+)
 
 # ---- Freshness (sidebar) --------------------------------------------------
 with st.sidebar:
