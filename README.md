@@ -1,4 +1,4 @@
-# FinOps for Snowflake + dbt (Starter v1.3.0)
+# FinOps for Snowflake + dbt (Starter v1.4.0)
 
 A production-literate starter that turns Snowflake `ACCOUNT_USAGE` into clear daily $$, KPIs, lineage, and a small Streamlit app. Optional **Pro** add-on surfaces hourly idle patterns and right-sizing hints.
 
@@ -39,7 +39,10 @@ streamlit run app/streamlit_app.py
 | Mode | What to set in `.env` | Notes |
 | ---- | --------------------- | ----- |
 | Demo walkthrough | Leave Snowflake creds blank, keep `DBT_TARGET=demo`, `DEMO_MODE=true`, `ENABLE_PRO_PACK=false` | Uses the seeded DEMO schema overlay; Pro tiles stay hidden. |
-| Live account | Provide Snowflake credentials, set `DBT_TARGET=live`, `DEMO_MODE=false` (toggle Pro by switching `ENABLE_PRO_PACK=true`) | Enables live freshness checks and docs metadata. |
+| Live account (Starter) | Provide Snowflake credentials, set `DBT_TARGET=live`, `DEMO_MODE=false`, leave `ENABLE_PRO_PACK=false` | Runs Starter marts against your Snowflake account with live freshness checks. |
+| Live account + FinOps Pro add-on | After installing the licensed FinOps Pro package, set `ENABLE_PRO_PACK=true` (keep other live settings) | Pro tiles require the separate FinOps Pro repo; without it the toggle has no effect. |
+
+> Starter ships without the FinOps Pro package. Reach out via the contact in the footer to license the add-on before enabling the Pro flag.
 
 Each pull request now attaches a `dbt-docs.tar.gz` artifact containing `manifest.json`, `catalog.json`, and `index.html` (plus compiled SQL when available) so reviewers can unzip locally and open `index.html` without hitting Snowflake.
 

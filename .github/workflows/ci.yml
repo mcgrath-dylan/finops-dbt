@@ -92,7 +92,7 @@ jobs:
             if errors:
                 failing = ", ".join(r.get('unique_id', 'unknown') for r in errors)
                 sys.exit(f"Freshness errors detected: {failing}")
-PY
+          PY
 
       - name: Generate docs (live)
         if: steps.has_secrets.outputs.available == 'true'

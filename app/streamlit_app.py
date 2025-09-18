@@ -356,7 +356,7 @@ with st.sidebar:
         enable_pro = st.toggle("Pro Insights", True)
     else:
         enable_pro = False
-        st.caption("Set `ENABLE_PRO_PACK=true` to preview Pro tiles.")
+        st.caption("FinOps Pro add-on required; set `ENABLE_PRO_PACK=true` only after installing the licensed package.")
     st.caption("Controls affect tiles, charts, and tables.")
     if st.button("Clear app cache"):
         clear_all_caches(); st.success("Caches cleared.")
