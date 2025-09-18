@@ -120,25 +120,25 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-            import json, pathlib, textwrap
+import json, pathlib, textwrap
 
-            target = pathlib.Path('target')
-            target.mkdir(exist_ok=True)
+target = pathlib.Path('target')
+target.mkdir(exist_ok=True)
 
-            manifest = target / 'manifest.json'
-            if not manifest.exists():
-                raise SystemExit('manifest.json missing; ensure dbt parse completed')
+manifest = target / 'manifest.json'
+if not manifest.exists():
+    raise SystemExit('manifest.json missing; ensure dbt parse completed')
 
-            (target / 'catalog.json').write_text(json.dumps({'nodes': {}, 'sources': {}, 'errors': []}, indent=2))
-            (target / 'index.html').write_text(textwrap.dedent('''
-                <!doctype html>
-                <meta charset="utf-8">
-                <title>dbt docs placeholder</title>
-                <style>body{font-family:ui-sans-serif,system-ui,-apple-system;margin:48px auto;max-width:720px;padding:0 16px;line-height:1.5}code{background:#f4f4f5;padding:2px 4px;border-radius:4px}</style>
-                <h1>dbt docs artifact (manifest only)</h1>
-                <p>This pull request was opened without Snowflake credentials. The <code>manifest.json</code> below can still be reviewed locally.</p>
-                <p>To see the full docs experience, rerun CI with secrets available.</p>
-              '''))
+(target / 'catalog.json').write_text(json.dumps({'nodes': {}, 'sources': {}, 'errors': []}, indent=2))
+(target / 'index.html').write_text(textwrap.dedent('''
+    <!doctype html>
+    <meta charset="utf-8">
+    <title>dbt docs placeholder</title>
+    <style>body{font-family:ui-sans-serif,system-ui,-apple-system;margin:48px auto;max-width:720px;padding:0 16px;line-height:1.5}code{background:#f4f4f5;padding:2px 4px;border-radius:4px}</style>
+    <h1>dbt docs artifact (manifest only)</h1>
+    <p>This pull request was opened without Snowflake credentials. The <code>manifest.json</code> below can still be reviewed locally.</p>
+    <p>To see the full docs experience, rerun CI with secrets available.</p>
+'''))
 PY
           tar -czf dbt-docs.tar.gz target/manifest.json target/catalog.json target/index.html
 
