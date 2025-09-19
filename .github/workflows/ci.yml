@@ -126,14 +126,14 @@ jobs:
           [[ -f target/manifest.json ]] || { echo "manifest.json missing; ensure dbt parse/compile ran"; exit 1; }
           printf '%s\n' '{"nodes": {}, "sources": {}, "errors": []}' > target/catalog.json
           printf '%s\n' \
-'<!doctype html>' \
-'<meta charset="utf-8">' \
-'<title>dbt docs (placeholder)</title>' \
-'<body style="font-family:ui-sans-serif,system-ui,-apple-system;margin:48px auto;max-width:720px;line-height:1.5">' \
-'<h1>Docs placeholder (no Snowflake creds)</h1>' \
-'<p>This PR includes <code>manifest.json</code> for local review. To see full docs, re-run CI with credentials.</p>' \
-'</body>' \
-> target/index.html
+            '<!doctype html>' \
+            '<meta charset="utf-8">' \
+            '<title>dbt docs (placeholder)</title>' \
+            '<body style="font-family:ui-sans-serif,system-ui,-apple-system;margin:48px auto;max-width:720px;line-height:1.5">' \
+            '<h1>Docs placeholder (no Snowflake creds)</h1>' \
+            '<p>This PR includes <code>manifest.json</code> for local review. To see full docs, re-run CI with credentials.</p>' \
+            '</body>' \
+            > target/index.html
           tar -czf dbt-docs.tar.gz target/manifest.json target/catalog.json target/index.html
 
       - name: Upload docs artifact
