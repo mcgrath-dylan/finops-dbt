@@ -80,17 +80,18 @@ jobs:
           --target live
           --output json > freshness.json
 
-      - name: Fail on freshness errors
+      - name: Fail on freshness errors (jq)
         if: steps.has_secrets.outputs.available == 'true'
         run: |
-          python -c "import json, sys; from pathlib import Path; payload = Path('freshness.json')
-if not payload.exists():
-    sys.exit('freshness.json missing')
-data = json.loads(payload.read_text())
-errors = [r for r in data.get('results', []) if r.get('status') == 'error']
-if errors:
-    failing = ', '.join(r.get('unique_id', 'unknown') for r in errors)
-    sys.exit(f'Freshness errors detected: {failing}')"
+          if [[ ! -f freshness.json ]]; then
+            echo "freshness.json missing"; exit 1
+          fi
+          # Fail if any result has status == "error"
+          if jq -e '.results[] | select(.status=="error")' freshness.json >/dev/null; then
+            echo "Freshness errors detected for:"
+            jq -r '.results[] | select(.status=="error") | .unique_id' freshness.json
+            exit 1
+          fi
 
       - name: Generate docs (live)
         if: steps.has_secrets.outputs.available == 'true'
