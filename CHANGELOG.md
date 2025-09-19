@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.4.0] - 2025-09-18
+### Added
+- PR CI uploads a fork-safe dbt docs artifact (manifest/catalog/index) and enforces Account Usage freshness errors (>96h) on live runs.
+
+### Changed
+- Streamlit app now gates Pro tiles behind the licensed flag, surfaces Budget/Variance/Freshness KPIs with safe fallbacks, and clarifies diagnostics context.
+- README/.env onboarding spells out Starter vs. licensed Pro configuration so the add-on stays gated.
+
+---
+
 ## [1.3.0] - 2025-09-17
 ### Added
 - Shared `ntz_hour` macro to normalize hour bucketing to `timestamp_ntz` across staging and intermediate models.

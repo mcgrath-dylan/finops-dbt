@@ -10,6 +10,6 @@ sources:
       error_after: {count: 96, period: hour}
     tables:
       - name: WAREHOUSE_METERING_HISTORY
-        loaded_at_field: END_TIME
+        loaded_at_field: START_TIME
       - name: QUERY_HISTORY
         loaded_at_field: END_TIME

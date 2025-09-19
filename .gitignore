@@ -4,3 +4,4 @@ dbt_packages/
 /profiles.yml
 .env
 .env.*
+!.env.example

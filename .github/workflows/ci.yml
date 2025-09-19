@@ -1,4 +1,4 @@
-name: PR — Validate dbt (compile only)
+name: PR — Compile & docs artifact
 
 permissions:
   contents: read
@@ -14,6 +14,9 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 20
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
@@ -43,64 +46,94 @@ jobs:
       - name: Remove stale package lock (if any)
         run: rm -f package-lock.yml
 
-      - name: dbt deps (Base only)
+      - name: dbt deps (skip if no packages.yml)
+        if: hashFiles('packages.yml') != ''
         run: dbt deps
 
-      - name: Detect if secrets are available
-        id: has_secrets
-        shell: bash
-        run: |
-          if [[ -z "${SNOWFLAKE_ACCOUNT}" || -z "${SNOWFLAKE_USER}" || -z "${SNOWFLAKE_PASSWORD}" ]]; then
-            echo "available=false" >> $GITHUB_OUTPUT
-          else
-            echo "available=true" >> $GITHUB_OUTPUT
-          fi
+      - name: dbt parse (manifest only)
+        run: >
+          dbt parse
+          --profiles-dir ${{ env.DBT_PROFILES_DIR }}
 
-      # -------- First-party PRs (with secrets): real compile against prod --------
-      - name: Compile (Base, prod)
-        if: steps.has_secrets.outputs.available == 'true'
+      - name: Compile (demo target)
         run: >
           dbt compile
-          --target prod
+          --profiles-dir ${{ env.DBT_PROFILES_DIR }}
+          --target demo
           --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
           --fail-fast
 
-      - name: Upload manifest (Base)
-        if: steps.has_secrets.outputs.available == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: manifest-base
-          path: target/manifest.json
-
-      # ----- Optional Pro compile when token + secrets are present -----
-      - name: Enable GitHub token for private packages (Pro)
-        if: steps.has_secrets.outputs.available == 'true' && env.PRO_REPO_TOKEN != ''
-        run: git config --global url."https://${PRO_REPO_TOKEN}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
-
-      - name: Add Pro package & deps
-        if: steps.has_secrets.outputs.available == 'true' && env.PRO_REPO_TOKEN != ''
+      - name: Check if Snowflake secrets are available
+        id: has_secrets
         run: |
-          cp packages.yml packages.base.yml
-          printf "\n  - git: https://github.com/mcgrath-dylan/snowflake-finops-pro.git\n    revision: main\n" >> packages.yml
-          dbt deps
+          if [[ -n "${{ secrets.SNOWFLAKE_ACCOUNT }}" && -n "${{ secrets.SNOWFLAKE_USER }}" && -n "${{ secrets.SNOWFLAKE_PASSWORD }}" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Compile (Pro, prod)
-        if: steps.has_secrets.outputs.available == 'true' && env.PRO_REPO_TOKEN != ''
+      - name: Source freshness (live)
+        if: steps.has_secrets.outputs.available == 'true'
         run: >
-          dbt compile
-          --target prod
-          --vars '{"enable_pro_pack": true, "DEMO_MODE": false, "snowflake_finops_pro": {"enable_pro_pack": true}}'
-          --fail-fast
+          dbt source freshness
+          --profiles-dir ${{ env.DBT_PROFILES_DIR }}
+          --target live
+          --output json > freshness.json
 
-      - name: Upload manifest (Pro)
-        if: steps.has_secrets.outputs.available == 'true' && env.PRO_REPO_TOKEN != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: manifest-pro
-          path: target/manifest.json
+      - name: Fail on freshness errors (jq)
+        if: steps.has_secrets.outputs.available == 'true'
+        run: |
+          if [[ ! -f freshness.json ]]; then
+            echo "freshness.json missing"; exit 1
+          fi
+          # Fail if any result has status == "error"
+          if jq -e '.results[] | select(.status=="error")' freshness.json >/dev/null; then
+            echo "Freshness errors detected for:"
+            jq -r '.results[] | select(.status=="error") | .unique_id' freshness.json
+            exit 1
+          fi
 
-      # -------- Forked PRs (no secrets): skip compile but pass --------
-      - name: Skip compile (no secrets in fork PR)
+      - name: Generate docs (live)
+        if: steps.has_secrets.outputs.available == 'true'
+        run: >
+          dbt docs generate
+          --profiles-dir ${{ env.DBT_PROFILES_DIR }}
+          --target live
+          --vars '{"enable_pro_pack": false, "DEMO_MODE": false}'
+          --exclude tag:backlog
+          --exclude source:account_usage_backlog
+          --exclude fqn:metering_demo_seed,resource_type:seed
+          --exclude fqn:metering_overlay,resource_type:model
+
+      - name: Package docs artifact (with secrets)
+        if: steps.has_secrets.outputs.available == 'true'
+        run: |
+          set -euo pipefail
+          files=(target/manifest.json target/catalog.json target/index.html)
+          [[ -f target/run_results.json ]] && files+=("target/run_results.json")
+          [[ -d target/compiled ]] && files+=("target/compiled")
+          tar -czf dbt-docs.tar.gz "${files[@]}"
+
+      - name: Prepare fallback docs artifact (no secrets)
         if: steps.has_secrets.outputs.available != 'true'
         run: |
-          echo "No Snowflake secrets available (likely a fork PR). Skipping compile and marking success."
+          set -euo pipefail
+          mkdir -p target
+          [[ -f target/manifest.json ]] || { echo "manifest.json missing; ensure dbt parse/compile ran"; exit 1; }
+          printf '%s\n' '{"nodes": {}, "sources": {}, "errors": []}' > target/catalog.json
+          printf '%s\n' \
+            '<!doctype html>' \
+            '<meta charset="utf-8">' \
+            '<title>dbt docs (placeholder)</title>' \
+            '<body style="font-family:ui-sans-serif,system-ui,-apple-system;margin:48px auto;max-width:720px;line-height:1.5">' \
+            '<h1>Docs placeholder (no Snowflake creds)</h1>' \
+            '<p>This PR includes <code>manifest.json</code> for local review. To see full docs, re-run CI with credentials.</p>' \
+            '</body>' \
+            > target/index.html
+          tar -czf dbt-docs.tar.gz target/manifest.json target/catalog.json target/index.html
+
+      - name: Upload docs artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-docs
+          path: dbt-docs.tar.gz
