@@ -1,4 +1,4 @@
-# FinOps for Snowflake + dbt (Starter v1.4.0)
+# FinOps for Snowflake + dbt (Starter v1.4.5)
 
 A production-literate starter that turns Snowflake `ACCOUNT_USAGE` into clear daily $$, KPIs, lineage, and a small Streamlit app. Optional **Pro** add-on surfaces hourly idle patterns and right-sizing hints.
 
