@@ -33,7 +33,15 @@ def env_bool(name: str, default: bool = False) -> bool:
         return default
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
+def env_float(name: str, default: float) -> float:
+    v = os.getenv(name)
+    try:
+        return float(v) if v is not None and v != "" else float(default)
+    except Exception:
+        return float(default)
+
 DEV_MODE = env_bool("DEV_MODE", False)
+CREDIT_PRICE = env_float("CREDIT_PRICE_USD", 3.0)
 
 st.set_page_config(
     page_title="FinOps Starter – Cost Overview",
@@ -594,6 +602,26 @@ if PRO_PACK_FLAG and enable_pro and not pro_hourly.empty:
         ["warehouse_name", "avg_credits_per_active_hour", "warehouse_size", "rightsize_suggestion"]
     ].copy()
 
+warehouses_flagged: Optional[int] = None
+estimated_savings: Optional[float] = None
+if PRO_PACK_FLAG and enable_pro and not pro_hourly.empty:
+    flagged = 0
+    if not rightsizing_df.empty and "rightsize_suggestion" in rightsizing_df.columns:
+        suggestions = rightsizing_df["rightsize_suggestion"].fillna("").astype(str).str.strip()
+        flagged = int((suggestions != "").sum())
+    warehouses_flagged = flagged
+    if total_idle_est is not None:
+        try:
+            estimated_savings = max(float(total_idle_est), 0.0)
+        except Exception:
+            estimated_savings = None
+    elif not pro_hourly.empty and "idle_cost_adj" in pro_hourly.columns:
+        try:
+            est = (pro_hourly["idle_cost_adj"].fillna(0.0).astype(float).sum() / max(days_shown, 1)) * 30.0
+            estimated_savings = max(float(est), 0.0)
+        except Exception:
+            estimated_savings = None
+
 # -------- stale-data banner (live only) ------------------------------------
 if not demo_mode and freshness_hours is not None:
     if freshness_hours > 96:
@@ -602,7 +630,7 @@ if not demo_mode and freshness_hours is not None:
         st.warning(f"Data may be slightly stale (~{freshness_hours:.1f}h).")
 
 # -------- KPI grid ----------------------------------------
-row1 = st.columns(2)
+row1 = st.columns(3)
 row2 = st.columns(2)
 
 def kpi(container, title, value, note=""):
@@ -616,6 +644,25 @@ def kpi(container, title, value, note=""):
 
 kpi(row1[0], "Month-to-date Spend", fmt_usd(mtd_total), f"Through {today.strftime('%b %d')} of a {dim}-day month")
 kpi(row1[1], "Forecast (month)", fmt_usd(forecast_month), "MTD run-rate × days in month")
+with row1[2]:
+    st.markdown('<div class="kpi">', unsafe_allow_html=True)
+    st.markdown('<div class="kpi-title">Right-Sizing (est.)</div>', unsafe_allow_html=True)
+    col1, col2 = st.columns(2)
+    flagged_display = "—" if warehouses_flagged is None else f"{warehouses_flagged}"
+    est_display = fmt_usd(estimated_savings) if estimated_savings is not None else "—"
+    col1.metric("Warehouses flagged", flagged_display)
+    col2.metric("Est. monthly savings", est_display)
+    credit_display = f"${CREDIT_PRICE:,.2f}"
+    if credit_display.endswith(".00"):
+        credit_display = credit_display[:-3]
+    if warehouses_flagged is None and estimated_savings is None:
+        caption = (
+            f"Estimates assume CREDIT_PRICE_USD ≈ {credit_display} and stable workload hours. Install Pro for full heuristics."
+        )
+    else:
+        caption = f"Based on Pro hourly heuristics @ {credit_display}/credit (30-day estimate)."
+    st.caption(caption)
+    st.markdown("</div>", unsafe_allow_html=True)
 kpi(row2[0], f"Idle Wasted (last {days_shown} days)",
     fmt_usd(idle_wasted_last_n) if idle_wasted_last_n is not None else "—",
     "Sum of idle cost over the last N days")

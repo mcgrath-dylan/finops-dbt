@@ -1,0 +1,3 @@
+packages:
+  - git: "https://github.com/mcgrath-dylan/snowflake-finops-pro.git"
+    revision: "main"
