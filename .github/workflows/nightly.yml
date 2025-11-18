@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 25
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
+      PRO_GH_PAT: ${{ secrets.PRO_GH_PAT }}
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -43,13 +44,13 @@ jobs:
         run: rm -f package-lock.yml
 
       - name: Authenticate Git for private deps (conditional)
-        if: ${{ secrets.PRO_GH_PAT != '' }}
+        if: ${{ env.PRO_GH_PAT != '' }}
         run: |
-          git config --global url."https://${{ secrets.PRO_GH_PAT }}:@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://${PRO_GH_PAT}:@github.com/".insteadOf "https://github.com/"
 
       - name: Select package set (Base or Pro)
         run: |
-          if [ -n "${{ secrets.PRO_GH_PAT }}" ]; then
+          if [ -n "$PRO_GH_PAT" ]; then
             cp packages.pro.yml packages.yml
             echo "Using Pro package set for docs (authorized)."
             echo 'DOCS_VARIANT=pro' >> "$GITHUB_ENV"

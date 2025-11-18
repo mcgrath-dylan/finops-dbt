@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 20
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
+      PRO_GH_PAT: ${{ secrets.PRO_GH_PAT }}
       # Use real Snowflake creds when available (first-party PRs)
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -46,9 +47,9 @@ jobs:
         run: rm -f package-lock.yml
 
       - name: Authenticate Git for private deps (conditional)
-        if: ${{ secrets.PRO_GH_PAT != '' }}
+        if: ${{ env.PRO_GH_PAT != '' }}
         run: |
-          git config --global url."https://${{ secrets.PRO_GH_PAT }}:@github.com/".insteadOf "https://github.com/"
+          git config --global url."https://${PRO_GH_PAT}:@github.com/".insteadOf "https://github.com/"
 
       - name: dbt deps (skip if no packages.yml)
         if: hashFiles('packages.yml') != ''
