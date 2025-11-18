@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 20
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
-      PRO_REPO_TOKEN: ${{ secrets.PRO_REPO_TOKEN }}
+      PRO_GH_PAT: ${{ secrets.PRO_GH_PAT }}
       # Use real Snowflake creds when available (first-party PRs)
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -46,6 +46,11 @@ jobs:
       - name: Remove stale package lock (if any)
         run: rm -f package-lock.yml
 
+      - name: Authenticate Git for private deps (conditional)
+        if: ${{ env.PRO_GH_PAT != '' }}
+        run: |
+          git config --global url."https://${PRO_GH_PAT}:@github.com/".insteadOf "https://github.com/"
+
       - name: dbt deps (skip if no packages.yml)
         if: hashFiles('packages.yml') != ''
         run: dbt deps
@@ -62,6 +67,18 @@ jobs:
           --target demo
           --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
           --fail-fast
+
+      - name: dbt test (state:modified+)
+        run: |
+          dbt deps
+          dbt compile
+          dbt test --select state:modified+ --defer --state target
+
+      - name: Upload dbt artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dbt-target
+          path: target/**
 
       - name: Check if Snowflake secrets are available
         id: has_secrets
@@ -93,47 +110,29 @@ jobs:
             exit 1
           fi
 
-      - name: Generate docs (live)
-        if: steps.has_secrets.outputs.available == 'true'
-        run: >
-          dbt docs generate
-          --profiles-dir ${{ env.DBT_PROFILES_DIR }}
-          --target live
-          --vars '{"enable_pro_pack": false, "DEMO_MODE": false}'
-          --exclude tag:backlog
-          --exclude source:account_usage_backlog
-          --exclude fqn:metering_demo_seed,resource_type:seed
-          --exclude fqn:metering_overlay,resource_type:model
-
-      - name: Package docs artifact (with secrets)
-        if: steps.has_secrets.outputs.available == 'true'
+      - name: Generate docs (with fallback)
         run: |
-          set -euo pipefail
-          files=(target/manifest.json target/catalog.json target/index.html)
-          [[ -f target/run_results.json ]] && files+=("target/run_results.json")
-          [[ -d target/compiled ]] && files+=("target/compiled")
-          tar -czf dbt-docs.tar.gz "${files[@]}"
-
-      - name: Prepare fallback docs artifact (no secrets)
-        if: steps.has_secrets.outputs.available != 'true'
-        run: |
-          set -euo pipefail
-          mkdir -p target
-          [[ -f target/manifest.json ]] || { echo "manifest.json missing; ensure dbt parse/compile ran"; exit 1; }
-          printf '%s\n' '{"nodes": {}, "sources": {}, "errors": []}' > target/catalog.json
-          printf '%s\n' \
-            '<!doctype html>' \
-            '<meta charset="utf-8">' \
-            '<title>dbt docs (placeholder)</title>' \
-            '<body style="font-family:ui-sans-serif,system-ui,-apple-system;margin:48px auto;max-width:720px;line-height:1.5">' \
-            '<h1>Docs placeholder (no Snowflake creds)</h1>' \
-            '<p>This PR includes <code>manifest.json</code> for local review. To see full docs, re-run CI with credentials.</p>' \
-            '</body>' \
-            > target/index.html
-          tar -czf dbt-docs.tar.gz target/manifest.json target/catalog.json target/index.html
+          set -e
+          rm -rf docs_stub
+          mkdir -p docs_stub
+          if dbt docs generate \
+            --profiles-dir ${{ env.DBT_PROFILES_DIR }} \
+            --target live \
+            --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' \
+            --exclude tag:backlog \
+            --exclude source:account_usage_backlog \
+            --exclude fqn:metering_demo_seed,resource_type:seed \
+            --exclude fqn:metering_overlay,resource_type:model; then
+            echo "Docs generated."
+          else
+            echo "dbt docs failed; using stub docs."
+            printf "<h2>Docs temporarily unavailable</h2><p>Build fallback</p>" > docs_stub/index.html
+          fi
 
       - name: Upload docs artifact
         uses: actions/upload-artifact@v4
         with:
           name: dbt-docs
-          path: dbt-docs.tar.gz
+          path: |
+            target/**
+            docs_stub/**

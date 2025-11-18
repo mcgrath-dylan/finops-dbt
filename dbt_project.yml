@@ -23,6 +23,13 @@ vars:
   metering_history_days: "{{ env_var('WINDOW_DAYS', 30) }}"
   account_usage_database: "SNOWFLAKE"
   account_usage_schema: "ACCOUNT_USAGE"
+  # Treat sub-minute task runtimes as trivial work that often indicates over-sized warehouses.
+  # 60s is a conservative default: less aggressive than 30s, avoids false positives vs 120s.
+  activity_floor_seconds: "{{ env_var('ACTIVITY_FLOOR_SECONDS', '60') | int }}"
+
+  # Credit price varies by contract; $3 is a conservative public demo default.
+  # Make this env-configurable for quick what-ifs without code changes.
+  credit_price_usd: "{{ env_var('CREDIT_PRICE_USD', '3') | as_number }}"
 
 models:
   on_schema_change: "{{ 'fail' if target.name == 'prod' else 'sync_all_columns' }}"

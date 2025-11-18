@@ -34,6 +34,14 @@ dbt deps && dbt build --vars '{"enable_pro_pack": false, "DEMO_MODE": true}' --f
 streamlit run app/streamlit_app.py
 ````
 
+### Makefile shortcuts
+
+| Command | What it does |
+| ------- | ------------- |
+| `make demo` | Installs packages, seeds demo data, builds dbt models, and launches the Streamlit app. |
+| `make live` | Installs packages and runs `dbt build` against the configured Snowflake target. |
+| `make docs` | Installs packages, builds docs, and serves them locally for review. |
+
 ### Quickstart (.env)
 
 | Mode | What to set in `.env` | Notes |
