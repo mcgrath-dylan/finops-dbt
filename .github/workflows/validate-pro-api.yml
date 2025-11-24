@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout starter
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Checkout pro (read-only)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: mcgrath-dylan/snowflake-finops-pro
           path: pro-repo
