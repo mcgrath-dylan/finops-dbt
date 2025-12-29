@@ -1,4 +1,4 @@
-dbt-snowflake~=1.10
+dbt-snowflake~=1.11
 streamlit==1.* 
 snowflake-connector-python==3.*
 pandas>=2.0
