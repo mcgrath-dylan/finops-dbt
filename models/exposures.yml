@@ -12,5 +12,4 @@ exposures:
     depends_on:
       - ref('fct_daily_costs')
       - ref('fct_cost_by_department')
-      - ref('fct_cost_trend')
       - ref('fct_budget_vs_actual')

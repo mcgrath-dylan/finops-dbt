@@ -1,4 +1,4 @@
-{{ config(materialized='view', enabled=var('pro_enabled', false)) }}
+{{ config(materialized='view', enabled=var('enable_pro_pack', false)) }}
 
 select *
 from (
