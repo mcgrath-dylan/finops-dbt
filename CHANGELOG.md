@@ -4,7 +4,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2026-03-16
+### Added
+- Test coverage for all Starter models (32 tests across 7 models).
+- PRO API validator workflow (`validate-pro-api.yml`).
+- Fast CI seed for offline testing.
+
+### Changed
+- Version reset to 2.0.0.
+- Bumped dbt-snowflake to ~1.11, snowflake-connector-python to 4.x, Python to 3.13.
+- CI workflows: actions bumped to v6; Snowflake-dependent steps gated on secrets.
+- Renamed `pro_enabled` to `enable_pro_pack` across all models and configuration.
+
+### Removed
+- `fct_cost_trend.sql` (redundant GROUP BY on fct_daily_costs).
+- `sources_backlog.yml` (aspirational, unmodeled sources).
+- `monitor_freshness_check.sql` (replaced by source freshness config).
+- `packages.local.yml` from version control (gitignored for local use).
 
 ---
 

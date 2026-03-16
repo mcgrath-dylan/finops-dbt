@@ -18,8 +18,8 @@ A production-literate starter that turns Snowflake `ACCOUNT_USAGE` into clear da
 ![Docs](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/docs.yml/badge.svg)
 ![Nightly](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/nightly.yml/badge.svg)
 ![PR CI](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/ci.yml/badge.svg)
-![dbt Core](https://img.shields.io/badge/dbt-1.10.x-informational)
-![Python](https://img.shields.io/badge/Python-3.11-informational)
+![dbt Core](https://img.shields.io/badge/dbt-1.11.x-informational)
+![Python](https://img.shields.io/badge/Python-3.13-informational)
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
 
 ## Quickstart — 30s
