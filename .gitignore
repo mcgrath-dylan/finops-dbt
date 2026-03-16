@@ -5,3 +5,4 @@ dbt_packages/
 .env
 .env.*
 !.env.example
+packages.local.yml

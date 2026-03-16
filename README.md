@@ -1,4 +1,4 @@
-# FinOps for Snowflake + dbt (Starter v1.4.5)
+# FinOps for Snowflake + dbt (Starter v2.0.0)
 
 A production-literate starter that turns Snowflake `ACCOUNT_USAGE` into clear daily $$, KPIs, lineage, and a small Streamlit app. Optional **Pro** add-on surfaces hourly idle patterns and right-sizing hints.
 
@@ -99,22 +99,17 @@ flowchart LR
   Q[(account_usage.QUERY_HISTORY)]
   STG1[stg_warehouse_metering]
   STG2[stg_query_history]
-  MON[monitor_freshness_check]
   INT[int_hourly_compute_costs]
   FCT[fct_daily_costs]
-  TREND[fct_cost_trend]
   BYDEP[fct_cost_by_department]
   BUD[fct_budget_vs_actual]
   EXP([Exposure: finops_streamlit_app])
 
-  W --> STG1 --> MON
-  STG1 --> INT
+  W --> STG1 --> INT
   Q --> STG2 --> INT
   INT --> FCT
-  FCT --> TREND
   FCT --> BYDEP
   FCT --> BUD
-  TREND --> EXP
   BYDEP --> EXP
   BUD --> EXP
 ```

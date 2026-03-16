@@ -47,6 +47,9 @@ models:
         data_type: number
       - name: efficiency_score     # ::number(5,2)
         data_type: number
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0, max_value: 100, row_condition: "efficiency_score is not null"}
       - name: month_to_date_cost   # ::number(38,2)
         data_type: number
       - name: cost_7day_avg        # ::number(38,2)
@@ -63,10 +66,30 @@ models:
     columns:
       - name: usage_hour_ntz
         tests: [not_null]
+      - name: metering_id
+        tests:
+          - not_null
+          - unique
+      - name: compute_cost_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+      - name: total_credits_used
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
   - name: stg_query_history
     columns:
       - name: usage_hour_ntz
         tests: [not_null]
+      - name: query_id
+        tests:
+          - not_null
+          - unique
+      - name: total_elapsed_seconds
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
   - name: int_hourly_compute_costs
     columns:
       - name: usage_hour_ntz
@@ -75,6 +98,16 @@ models:
         tests:
           - not_null
           - unique
+  - name: fct_cost_by_department
+    columns:
+      - name: usage_date
+        tests: [not_null]
+      - name: department
+        tests: [not_null]
+      - name: total_cost_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
   - name: fct_budget_vs_actual
     columns:
       - name: usage_date
@@ -83,6 +116,18 @@ models:
       - name: department
         tests:
           - not_null
+      - name: budget_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
     tests:
       - dbt_utils.unique_combination_of_columns:
           combination_of_columns: [usage_date, department]
+  - name: dim_department
+    columns:
+      - name: warehouse_name
+        tests:
+          - not_null
+          - unique
+      - name: department
+        tests: [not_null]

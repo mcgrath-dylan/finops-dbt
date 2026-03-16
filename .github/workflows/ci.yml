@@ -1,4 +1,4 @@
-name: PR — Compile & docs artifact
+name: PR — Parse, Compile & Test
 
 permissions:
   contents: read
@@ -21,7 +21,6 @@ jobs:
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
       PRO_GH_PAT: ${{ secrets.PRO_GH_PAT }}
-      # Use real Snowflake creds when available (first-party PRs)
       SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
       SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
       SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
@@ -55,84 +54,58 @@ jobs:
         if: hashFiles('packages.yml') != ''
         run: dbt deps
 
-      - name: dbt parse (manifest only)
-        run: >
-          dbt parse
-          --profiles-dir ${{ env.DBT_PROFILES_DIR }}
+      - name: dbt parse
+        run: dbt parse
 
-      - name: Compile (demo target)
-        run: >
-          dbt compile
-          --profiles-dir ${{ env.DBT_PROFILES_DIR }}
-          --target demo
-          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
-          --fail-fast
-
-      - name: dbt test (state:modified+)
-        run: |
-          dbt deps
-          dbt compile
-          dbt test --select state:modified+ --defer --state target
-
-      - name: Upload dbt artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: dbt-target
-          path: target/**
+      # --- Everything below requires a live Snowflake connection ---
 
       - name: Check if Snowflake secrets are available
         id: has_secrets
         run: |
-          if [[ -n "${{ secrets.SNOWFLAKE_ACCOUNT }}" && -n "${{ secrets.SNOWFLAKE_USER }}" && -n "${{ secrets.SNOWFLAKE_PASSWORD }}" ]]; then
+          if [[ -n "$SNOWFLAKE_ACCOUNT" && -n "$SNOWFLAKE_USER" && -n "$SNOWFLAKE_PASSWORD" ]]; then
             echo "available=true" >> "$GITHUB_OUTPUT"
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Snowflake secrets not configured — skipping compile, test, and freshness steps."
           fi
 
-      - name: Source freshness (live)
+      - name: dbt compile
+        if: steps.has_secrets.outputs.available == 'true'
+        run: >
+          dbt compile
+          --target demo
+          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
+          --fail-fast
+
+      - name: dbt test
+        if: steps.has_secrets.outputs.available == 'true'
+        run: >
+          dbt test
+          --target demo
+          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
+
+      - name: Source freshness
         if: steps.has_secrets.outputs.available == 'true'
         run: >
           dbt source freshness
-          --profiles-dir ${{ env.DBT_PROFILES_DIR }}
           --target live
           --output json > freshness.json
 
-      - name: Fail on freshness errors (jq)
+      - name: Fail on freshness errors
         if: steps.has_secrets.outputs.available == 'true'
         run: |
           if [[ ! -f freshness.json ]]; then
             echo "freshness.json missing"; exit 1
           fi
-          # Fail if any result has status == "error"
           if jq -e '.results[] | select(.status=="error")' freshness.json >/dev/null; then
             echo "Freshness errors detected for:"
             jq -r '.results[] | select(.status=="error") | .unique_id' freshness.json
             exit 1
           fi
 
-      - name: Generate docs (with fallback)
-        run: |
-          set -e
-          rm -rf docs_stub
-          mkdir -p docs_stub
-          if dbt docs generate \
-            --profiles-dir ${{ env.DBT_PROFILES_DIR }} \
-            --target live \
-            --vars '{"enable_pro_pack": false, "DEMO_MODE": false}' \
-            --exclude tag:backlog \
-            --exclude source:account_usage_backlog \
-            --exclude fqn:metering_demo_seed,resource_type:seed \
-            --exclude fqn:metering_overlay,resource_type:model; then
-            echo "Docs generated."
-          else
-            echo "dbt docs failed; using stub docs."
-            printf "<h2>Docs temporarily unavailable</h2><p>Build fallback</p>" > docs_stub/index.html
-          fi
-
-      - name: Upload docs artifact
+      - name: Upload dbt artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dbt-docs
-          path: |
-            target/**
-            docs_stub/**
+          name: dbt-target
+          path: target/**
