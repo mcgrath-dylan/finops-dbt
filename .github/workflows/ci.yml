@@ -86,10 +86,11 @@ jobs:
 
       - name: Source freshness
         if: steps.has_secrets.outputs.available == 'true'
-        run: >
-          dbt source freshness
-          --target live
-          --output json > freshness.json
+        run: |
+          dbt source freshness --target live || true
+          if [[ -f target/sources.json ]]; then
+            cp target/sources.json freshness.json
+          fi
 
       - name: Warn on freshness errors
         if: steps.has_secrets.outputs.available == 'true'
@@ -102,6 +103,10 @@ jobs:
           if jq -e '.results[] | select(.status=="error")' freshness.json >/dev/null; then
             echo "::warning::Freshness errors detected for:"
             jq -r '.results[] | select(.status=="error") | .unique_id' freshness.json
+          fi
+          if jq -e '.results[] | select(.status=="runtime error")' freshness.json >/dev/null; then
+            echo "::warning::Freshness runtime errors detected for:"
+            jq -r '.results[] | select(.status=="runtime error") | .unique_id' freshness.json
           fi
           exit 0
 
