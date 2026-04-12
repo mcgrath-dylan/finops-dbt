@@ -3,7 +3,7 @@ version: 2
 exposures:
   - name: finops_streamlit_app
     type: application
-    maturity: medium
+    maturity: high
     url: "https://mcgrath-dylan.github.io/finops-dbt/base/"
     description: "Read-only Streamlit app visualizing FinOps marts; Pro surfaces candidates. Data recency monitored with 48h warn / 96h error Account Usage freshness thresholds."
     owner:
@@ -13,3 +13,8 @@ exposures:
       - ref('fct_daily_costs')
       - ref('fct_cost_by_department')
       - ref('fct_budget_vs_actual')
+      - ref('fct_daily_storage_costs')
+      - ref('fct_cost_forecast')
+      - ref('fct_total_cost_summary')
+      - ref('fct_top_spenders')
+      - ref('dim_warehouse')

@@ -369,6 +369,93 @@ def load_budget_vs_actual_latest(demo: bool) -> Optional[dt.date]:
         pass
     return None
 
+@st.cache_data(ttl=60, show_spinner=False)
+def load_forecast(demo: bool) -> pd.DataFrame:
+    cp = get_conn_params()
+    db = cp["database"]
+    sch = active_schema(demo)
+    df = lc(run_query(
+        f"""
+        select forecast_date, warehouse_name, forecasted_cost_usd,
+               confidence_band_low, confidence_band_high, days_ahead
+        from {db}.{sch}.fct_cost_forecast
+        where forecast_run_date = current_date()
+        order by forecast_date
+        """,
+        cache_key=f"forecast:{db}.{sch}",
+    ))
+    if "forecast_date" in df.columns:
+        df["forecast_date"] = pd.to_datetime(df["forecast_date"]).dt.date
+    df = to_float(df, ["forecasted_cost_usd", "confidence_band_low", "confidence_band_high", "days_ahead"])
+    return df
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_storage_costs(demo: bool, lookback_days: int) -> pd.DataFrame:
+    cp = get_conn_params()
+    db = cp["database"]
+    sch = active_schema(demo)
+    df = lc(run_query(
+        f"""
+        select usage_date, database_name,
+               total_storage_tb, estimated_storage_cost_usd,
+               estimated_active_cost_usd, estimated_failsafe_cost_usd, estimated_stage_cost_usd,
+               month_to_date_storage_cost as mtd_storage_cost_usd
+        from {db}.{sch}.fct_daily_storage_costs
+        where usage_date >= dateadd(day, -{lookback_days}, current_date())
+        order by usage_date
+        """,
+        cache_key=f"storage:{db}.{sch}:{lookback_days}",
+    ))
+    if "usage_date" in df.columns:
+        df["usage_date"] = pd.to_datetime(df["usage_date"]).dt.date
+    df = to_float(df, ["total_storage_tb", "estimated_storage_cost_usd",
+                        "estimated_active_cost_usd", "estimated_failsafe_cost_usd",
+                        "estimated_stage_cost_usd", "mtd_storage_cost_usd"])
+    return df
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_top_spenders(demo: bool, lookback_days: int) -> pd.DataFrame:
+    cp = get_conn_params()
+    db = cp["database"]
+    sch = active_schema(demo)
+    df = lc(run_query(
+        f"""
+        select usage_date, user_name, primary_warehouse_name,
+               query_count, total_runtime_seconds, gb_scanned,
+               estimated_cost_usd, has_cost_estimate,
+               rank_by_query_count, rank_by_runtime, rank_by_cost,
+               pct_of_daily_query_total
+        from {db}.{sch}.fct_top_spenders
+        where usage_date >= dateadd(day, -{lookback_days}, current_date())
+        order by usage_date desc
+        """,
+        cache_key=f"top_spenders:{db}.{sch}:{lookback_days}",
+    ))
+    if "usage_date" in df.columns:
+        df["usage_date"] = pd.to_datetime(df["usage_date"]).dt.date
+    df = to_float(df, ["query_count", "total_runtime_seconds", "gb_scanned",
+                        "estimated_cost_usd", "pct_of_daily_query_total"])
+    return df
+
+@st.cache_data(ttl=60, show_spinner=False)
+def load_total_cost_summary(demo: bool) -> pd.DataFrame:
+    cp = get_conn_params()
+    db = cp["database"]
+    sch = active_schema(demo)
+    df = lc(run_query(
+        f"""
+        select usage_date, cost_category, cost_usd, pct_of_daily_total, mtd_cost_usd
+        from {db}.{sch}.fct_total_cost_summary
+        where usage_date >= date_trunc('month', current_date())
+        order by usage_date, cost_category
+        """,
+        cache_key=f"total_cost:{db}.{sch}",
+    ))
+    if "usage_date" in df.columns:
+        df["usage_date"] = pd.to_datetime(df["usage_date"]).dt.date
+    df = to_float(df, ["cost_usd", "pct_of_daily_total", "mtd_cost_usd"])
+    return df
+
 @st.cache_data(show_spinner=False)
 def load_current_warehouses():
     df = lc(run_query("show warehouses", cache_key="show_warehouses"))
@@ -506,6 +593,10 @@ with right:
 fct, dept, fresh = load_models(demo_mode, days_shown)
 budget = load_budget(demo_mode)
 bva_latest = load_budget_vs_actual_latest(demo_mode)
+forecast_df = load_forecast(demo_mode)
+storage_df = load_storage_costs(demo_mode, days_shown)
+top_spenders_df = load_top_spenders(demo_mode, days_shown)
+total_cost_df = load_total_cost_summary(demo_mode)
 
 today = dt.date.today()
 first_day = today.replace(day=1)
@@ -516,8 +607,20 @@ mtd_fct = fct[(fct["usage_date"] >= first_day) & (fct["usage_date"] <= today)].c
 if not mtd_fct.empty and "total_cost" not in mtd_fct.columns and {"compute_cost", "idle_cost"} <= set(mtd_fct.columns):
     mtd_fct["total_cost"] = mtd_fct["compute_cost"].fillna(0) + mtd_fct["idle_cost"].fillna(0)
 mtd_total = float(mtd_fct.get("total_cost", pd.Series([0.0])).sum()) if not mtd_fct.empty else 0.0
-forecast_month = (mtd_total / max(elapsed, 1)) * dim if mtd_total > 0 else 0.0
-forecast_month = max(forecast_month, mtd_total)
+forecast_month_inline = (mtd_total / max(elapsed, 1)) * dim if mtd_total > 0 else 0.0
+forecast_month_inline = max(forecast_month_inline, mtd_total)
+
+# Use the dbt forecast model when available; fall back to inline run-rate
+forecast_method_label = "MTD run-rate x days in month"
+if not forecast_df.empty and "forecasted_cost_usd" in forecast_df.columns:
+    remaining_forecast = float(forecast_df.loc[
+        forecast_df["forecast_date"] <= dt.date(today.year, today.month, dim_count(today)),
+        "forecasted_cost_usd"
+    ].sum())
+    forecast_month = mtd_total + remaining_forecast
+    forecast_method_label = "Rolling avg + trend model"
+else:
+    forecast_month = forecast_month_inline
 
 # Idle wasted (last N days) from Starter
 if not fct.empty and "idle_cost" in fct.columns:
@@ -643,7 +746,7 @@ def kpi(container, title, value, note=""):
         st.markdown("</div>", unsafe_allow_html=True)
 
 kpi(row1[0], "Month-to-date Spend", fmt_usd(mtd_total), f"Through {today.strftime('%b %d')} of a {dim}-day month")
-kpi(row1[1], "Forecast (month)", fmt_usd(forecast_month), "MTD run-rate × days in month")
+kpi(row1[1], "Forecast (month)", fmt_usd(forecast_month), forecast_method_label)
 with row1[2]:
     st.markdown('<div class="kpi">', unsafe_allow_html=True)
     st.markdown('<div class="kpi-title">Right-Sizing (est.)</div>', unsafe_allow_html=True)
@@ -695,6 +798,139 @@ kpi(
 )
 
 st.divider()
+
+# -------- Total Cost Breakdown (v3.0.0) ------------------------------------
+if not total_cost_df.empty and "cost_category" in total_cost_df.columns:
+    st.markdown(
+        f'### Total Cost Breakdown (MTD) <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
+        unsafe_allow_html=True,
+    )
+    mtd_summary = total_cost_df.groupby("cost_category", as_index=False)["cost_usd"].sum()
+    total_all = float(mtd_summary["cost_usd"].sum())
+    if total_all > 0:
+        mtd_summary["pct"] = (mtd_summary["cost_usd"] / total_all * 100.0).round(1)
+        left_tc, right_tc = st.columns([1, 1])
+        with left_tc:
+            if PLOTLY:
+                fig_tc = px.pie(mtd_summary, values="cost_usd", names="cost_category",
+                                hole=0.4, color_discrete_sequence=px.colors.qualitative.Set2)
+                fig_tc.update_layout(height=280, margin=dict(l=10, r=10, t=10, b=10))
+                fig_tc.update_traces(textinfo="label+percent", hovertemplate="%{label}: $%{value:,.0f}")
+                st.plotly_chart(fig_tc, use_container_width=True)
+            else:
+                st.dataframe(mtd_summary, hide_index=True)
+        with right_tc:
+            kpi(st, "Total Snowflake Spend (MTD)", fmt_usd(total_all),
+                f"{len(mtd_summary)} cost categories through {today.strftime('%b %d')}")
+    st.divider()
+
+# -------- Cost Forecast Chart (v3.0.0) -------------------------------------
+if not forecast_df.empty and "forecast_date" in forecast_df.columns and PLOTLY:
+    st.markdown(
+        f'### Cost Forecast <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
+        unsafe_allow_html=True,
+    )
+    # Aggregate across warehouses for the chart
+    fc_agg = forecast_df.groupby("forecast_date", as_index=False).agg(
+        forecasted=("forecasted_cost_usd", "sum"),
+        low=("confidence_band_low", "sum"),
+        high=("confidence_band_high", "sum"),
+    )
+    # Actuals for the last 30 days
+    act_window = fct[fct["usage_date"] >= today - dt.timedelta(days=30)].copy() if not fct.empty else pd.DataFrame()
+    if not act_window.empty:
+        act_agg = act_window.groupby("usage_date", as_index=False)["total_cost"].sum()
+    else:
+        act_agg = pd.DataFrame(columns=["usage_date", "total_cost"])
+
+    import plotly.graph_objects as go
+    fig_fc = go.Figure()
+    if not act_agg.empty:
+        fig_fc.add_trace(go.Scatter(x=act_agg["usage_date"], y=act_agg["total_cost"],
+                                     mode="lines+markers", name="Actual", line=dict(width=2)))
+    fig_fc.add_trace(go.Scatter(x=fc_agg["forecast_date"], y=fc_agg["high"],
+                                 mode="lines", name="Upper band", line=dict(width=0), showlegend=False))
+    fig_fc.add_trace(go.Scatter(x=fc_agg["forecast_date"], y=fc_agg["low"],
+                                 mode="lines", name="Confidence band", fill="tonexty",
+                                 fillcolor="rgba(100,150,255,0.15)", line=dict(width=0)))
+    fig_fc.add_trace(go.Scatter(x=fc_agg["forecast_date"], y=fc_agg["forecasted"],
+                                 mode="lines", name="Forecast", line=dict(dash="dash", width=2)))
+    fig_fc.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified",
+                          legend=dict(orientation="h", yanchor="bottom", y=1.02))
+    fig_fc.update_yaxes(tickprefix="$", separatethousands=True, title="")
+    fig_fc.update_xaxes(title="")
+    st.plotly_chart(fig_fc, use_container_width=True)
+    st.caption("Forecast uses rolling average + linear trend with day-of-week seasonality. Shaded band shows 1 stddev confidence interval.")
+    st.divider()
+
+# -------- Storage Costs (v3.0.0) -------------------------------------------
+if not storage_df.empty and "estimated_storage_cost_usd" in storage_df.columns:
+    st.markdown(
+        f'### Storage Costs <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
+        unsafe_allow_html=True,
+    )
+    stor_mtd = storage_df[storage_df["usage_date"] >= first_day]
+    storage_mtd_total = float(stor_mtd["estimated_storage_cost_usd"].sum()) if not stor_mtd.empty else 0.0
+    left_s, right_s = st.columns([2, 1])
+    with left_s:
+        if PLOTLY:
+            stor_daily = storage_df.groupby("usage_date", as_index=False).agg(
+                active=("estimated_active_cost_usd", "sum"),
+                failsafe=("estimated_failsafe_cost_usd", "sum"),
+                stage=("estimated_stage_cost_usd", "sum"),
+            )
+            import plotly.graph_objects as go
+            fig_s = go.Figure()
+            fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["active"],
+                                        stackgroup="one", name="Active"))
+            fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["failsafe"],
+                                        stackgroup="one", name="Failsafe"))
+            fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["stage"],
+                                        stackgroup="one", name="Stage"))
+            fig_s.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified")
+            fig_s.update_yaxes(tickprefix="$", separatethousands=True, title="")
+            fig_s.update_xaxes(title="")
+            st.plotly_chart(fig_s, use_container_width=True)
+        else:
+            st.dataframe(storage_df.head(rows_to_show), hide_index=True)
+    with right_s:
+        kpi(st, "Storage (MTD)", fmt_usd(storage_mtd_total), f"Through {today.strftime('%b %d')}")
+        top_dbs = (storage_df.groupby("database_name", as_index=False)["estimated_storage_cost_usd"]
+                   .sum().sort_values("estimated_storage_cost_usd", ascending=False).head(rows_to_show))
+        if not top_dbs.empty:
+            top_dbs["cost"] = top_dbs["estimated_storage_cost_usd"].apply(lambda x: fmt_usd(float(x)))
+            st.markdown("**Top databases by storage cost**")
+            st.dataframe(top_dbs[["database_name", "cost"]].rename(columns={"database_name": "Database", "cost": "Cost"}),
+                         hide_index=True, width="stretch")
+    st.divider()
+
+# -------- Top Users (v3.0.0) -----------------------------------------------
+if not top_spenders_df.empty and "user_name" in top_spenders_df.columns:
+    st.markdown(
+        f'### Top Users <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
+        unsafe_allow_html=True,
+    )
+    ts = top_spenders_df.copy()
+    ts_agg = ts.groupby("user_name", as_index=False).agg(
+        queries=("query_count", "sum"),
+        runtime_hrs=("total_runtime_seconds", lambda x: round(x.sum() / 3600.0, 1)),
+        gb_scanned=("gb_scanned", "sum"),
+        est_cost=("estimated_cost_usd", "sum"),
+    )
+    has_cost = ts["has_cost_estimate"].any() if "has_cost_estimate" in ts.columns else False
+    sort_col = "est_cost" if has_cost else "runtime_hrs"
+    ts_agg = ts_agg.sort_values(sort_col, ascending=False).head(rows_to_show).reset_index(drop=True)
+    ts_agg["queries"] = ts_agg["queries"].astype(int)
+    ts_agg["gb_scanned"] = ts_agg["gb_scanned"].round(1)
+    display_cols = {"user_name": "User", "queries": "Queries", "runtime_hrs": "Runtime (hrs)", "gb_scanned": "GB Scanned"}
+    if has_cost:
+        ts_agg["est_cost_fmt"] = ts_agg["est_cost"].apply(lambda x: fmt_usd(float(x), 2) if pd.notnull(x) else "-")
+        display_cols["est_cost_fmt"] = "Est. Cost"
+    ts_display = ts_agg.rename(columns=display_cols)
+    st.dataframe(ts_display[list(display_cols.values())], hide_index=True, width="stretch")
+    if not has_cost:
+        st.caption("Cost estimates require Pro pack. Showing volume metrics only.")
+    st.divider()
 
 # -------- Spend by Department ----------------------------------------------
 st.markdown(
@@ -1015,6 +1251,10 @@ diag_rows.append(diag_entry("fct_daily_costs", fct, "usage_date"))
 diag_rows.append(diag_entry("fct_cost_by_department", dept, "usage_date"))
 diag_rows.append(diag_entry("budget_daily", budget, "date"))
 diag_rows.append(diag_entry("fct_budget_vs_actual", None, explicit_date=bva_latest))
+diag_rows.append(diag_entry("fct_daily_storage_costs", storage_df, "usage_date"))
+diag_rows.append(diag_entry("fct_cost_forecast", forecast_df, "forecast_date"))
+diag_rows.append(diag_entry("fct_total_cost_summary", total_cost_df, "usage_date"))
+diag_rows.append(diag_entry("fct_top_spenders", top_spenders_df, "usage_date"))
 diag_df = pd.DataFrame(diag_rows)
 
 with st.expander("Diagnostics", expanded=DEV_MODE):

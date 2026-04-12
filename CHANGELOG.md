@@ -4,9 +4,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-04-26
+### Added
+- **Storage costs:** `stg_storage_usage` + `fct_daily_storage_costs` surfaces storage spend from `ACCOUNT_USAGE.STORAGE_USAGE`.
+- **Cost forecast:** `fct_cost_forecast` adds a 30-day warehouse-level projection using rolling average, trend, day-of-week seasonality, and confidence bands.
+- **Total cost summary:** `fct_total_cost_summary` rolls compute and storage costs into one daily cost category table.
+- **Top spenders:** `int_top_spenders` + `fct_top_spenders` adds a ranked user leaderboard by query volume with optional Pro cost estimates.
+- **Warehouse dimension:** `dim_warehouse` adds warehouse metadata from metering and query history for fresh-account compatibility.
+- New dbt_project vars: `storage_cost_per_tb_per_month`, `forecast_lookback_days`, `storage_history_days`.
+- STORAGE_USAGE and WAREHOUSES added to Starter sources.
+- Schema tests for all 8 new models.
+- Streamlit dashboard: total cost breakdown, forecast chart, storage costs section, and top users leaderboard.
+- Forecast KPI now uses the dbt model instead of naive MTD run-rate extrapolation.
+- `generate_budget_seed.py` script for refreshing budget seed dates.
+- `scripts/bootstrap_snowflake.sql` for idempotent fresh-account setup.
+- `scripts/generate_demo_workload.sql` for representative Account Usage activity.
+- `docs/validation_2026-04-26.md` scaffold for live Snowflake validation evidence.
+
+### Changed
+- Version bumped to 3.0.0.
+- Exposure maturity upgraded from `medium` to `high`.
+- Budget seed regenerated with current-dated rows.
+- `make demo` now uses the committed `.ci/profiles` demo target.
+- CI source freshness is warn-only until the trial account has baseline Account Usage data.
+- dbt 1.11 deprecation warnings removed from project, source, and generic test configs.
+
+### Removed
+- `models/stubs/pro_stub.sql` empty placeholder.
+
+---
+
 ## [2.0.0] - 2026-03-16
 ### Added
-- Test coverage for all Starter models (32 tests across 7 models).
+- Test coverage for all Starter models.
 - PRO API validator workflow (`validate-pro-api.yml`).
 - Fast CI seed for offline testing.
 
@@ -17,20 +47,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renamed `pro_enabled` to `enable_pro_pack` across all models and configuration.
 
 ### Removed
-- `fct_cost_trend.sql` (redundant GROUP BY on fct_daily_costs).
-- `sources_backlog.yml` (aspirational, unmodeled sources).
-- `monitor_freshness_check.sql` (replaced by source freshness config).
-- `packages.local.yml` from version control (gitignored for local use).
+- `fct_cost_trend.sql` redundant rollup.
+- `sources_backlog.yml` aspirational, unmodeled sources.
+- `monitor_freshness_check.sql` replaced by source freshness config.
+- `packages.local.yml` from version control.
 
 ---
 
 ## [1.4.0] - 2025-09-18
 ### Added
-- PR CI uploads a fork-safe dbt docs artifact (manifest/catalog/index) and enforces Account Usage freshness errors (>96h) on live runs.
+- PR CI uploads a fork-safe dbt docs artifact and enforces Account Usage freshness errors on live runs.
 
 ### Changed
-- Streamlit app now gates Pro tiles behind the licensed flag, surfaces Budget/Variance/Freshness KPIs with safe fallbacks, and clarifies diagnostics context.
-- README/.env onboarding spells out Starter vs. licensed Pro configuration so the add-on stays gated.
+- Streamlit app gates Pro tiles behind the licensed flag, surfaces Budget/Variance/Freshness KPIs with safe fallbacks, and clarifies diagnostics context.
+- README/.env onboarding spells out Starter vs licensed Pro configuration.
 
 ---
 
@@ -39,32 +69,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Shared `ntz_hour` macro to normalize hour bucketing to `timestamp_ntz` across staging and intermediate models.
 
 ### Changed
-- Normalized warehouse metering and query staging to derive `usage_hour_ntz` from NTZ-cast timestamps with usage dates sourced from that hour.
-- Applied hour-level incremental watermarks with a one-hour lookback to staging and `int_hourly_compute_costs` to keep reruns idempotent while preserving surrogate key uniqueness.
-- Updated CI profile defaults to honor `DBT_TARGET`/`DBT_THREADS` env vars while defaulting to four threads for demo/dev/live targets.
+- Normalized warehouse metering and query staging to derive `usage_hour_ntz` from NTZ-cast timestamps.
+- Applied hour-level incremental watermarks with a one-hour lookback to staging and `int_hourly_compute_costs`.
+- Updated CI profile defaults to honor `DBT_TARGET`/`DBT_THREADS` env vars.
 
 ---
 
-## [v1.2.0] — 2025-09-16
+## [1.2.0] - 2025-09-16
 ### Added
-- Dept-aware budget vs actual mart.
-- AU freshness thresholds (warn 48h / error 96h).
+- Department-aware budget vs actual mart.
+- Account Usage freshness thresholds.
 - Schema tests for key models.
 
-### Changed
-- App now reads Live budget table with CSV fallback and shows Budget (MTD) and % Used (MTD) KPIs.
-
 ---
 
-## [v1.1.0] — 2025-09-12
+## [1.1.0] - 2025-09-12
 ### Added
-- **dbt Core 1.10 project** with layered models `stg_` → `int_` → `marts` plus `dim_department`.
-- **Authoritative daily spend marts:** `models/marts/finance/fct_daily_costs.sql`, `fct_cost_by_department.sql`, `fct_cost_trend.sql`, `fct_budget_vs_actual.sql`.
-- **Demo Mode** via seeds (`seeds/department_mapping.csv`, `seeds/budget_daily.csv`, `seeds/metering_demo_seed.csv`) and a `DEMO` schema overlay.
-- **Docs & lineage publishing** using GitHub Actions to `gh-pages` at `/base/` (and `/pro/` when Pro is enabled).
-- **Exposure** for the app: `models/exposures.yml` (`finops_streamlit_app`) with owner metadata.
-- **Streamlit app** (`app/streamlit_app.py`) with KPIs (MTD spend, monthly forecast), trends, and top departments.
-- **Monitor view** (`models/monitors/monitor_freshness_check.sql`) to surface latest metering hour.
-
-### Changed
-- N/A
+- dbt Core project with layered staging, intermediate, and marts models.
+- Authoritative daily spend marts.
+- Demo Mode via seeds and a `DEMO` schema overlay.
+- Docs and lineage publishing using GitHub Actions.
+- Exposure for the Streamlit app.
+- Streamlit app with KPIs, trends, and top departments.
+- Monitor view to surface latest metering hour.

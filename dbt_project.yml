@@ -1,5 +1,5 @@
 name: 'snowflake_finops'
-version: '2.0.0'
+version: '3.0.0'
 config-version: 2
 
 profile: 'snowflake_finops'
@@ -31,8 +31,15 @@ vars:
   # Make this env-configurable for quick what-ifs without code changes.
   credit_price_usd: "{{ env_var('CREDIT_PRICE_USD', '3') | as_number }}"
 
+  # v3.0.0: Storage cost rate (on-demand default: $23/TB/month)
+  storage_cost_per_tb_per_month: "{{ env_var('STORAGE_COST_PER_TB_PER_MONTH', '23.0') | as_number }}"
+  # Forecast lookback window (days of actuals used for trend calculation)
+  forecast_lookback_days: "{{ env_var('FORECAST_LOOKBACK_DAYS', '60') | int }}"
+  # Storage history for full refresh (avoid scanning entire STORAGE_USAGE table)
+  storage_history_days: "{{ env_var('STORAGE_HISTORY_DAYS', '365') | int }}"
+
 models:
-  on_schema_change: "{{ 'fail' if target.name == 'prod' else 'sync_all_columns' }}"
+  +on_schema_change: "{{ 'fail' if target.name == 'prod' else 'sync_all_columns' }}"
   snowflake_finops:
     staging:
       +materialized: incremental
@@ -43,4 +50,3 @@ models:
     marts:
       +materialized: table
       +tags: ["stage:marts","pack:base"]
-  

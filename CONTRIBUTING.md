@@ -1,44 +1,30 @@
 # Contributing
 
-Local development and integration notes for `finops-dbt`.
-
-## Local dev
-
-1. Create a Python virtual environment and install dependencies:
+## Run Locally
 
 ```bash
-py -m venv .venv
-source .venv/bin/activate        # Git Bash on Windows
-# .venv\Scripts\Activate.ps1     # PowerShell alternative
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
+dbt deps --profiles-dir .ci/profiles --target demo
+dbt parse --profiles-dir .ci/profiles --target demo
+dbt build --profiles-dir .ci/profiles --target demo --vars '{"DEMO_MODE": true, "enable_pro_pack": false}'
+dbt test --profiles-dir .ci/profiles --target demo --vars '{"DEMO_MODE": true, "enable_pro_pack": false}'
 ```
 
-2. For local Pro integration, create a `packages.local.yml` at the repo root pointing to your local `snowflake-finops-pro` checkout (this file is gitignored):
+`make demo` uses the same committed demo profile and launches Streamlit after a successful build.
 
-```yaml
-packages:
-  - local: ../snowflake-finops-pro
-```
+## Add A Model
 
-Then run:
+- Put staging models in `models/staging`, intermediate models in `models/intermediate`, and marts in `models/marts`.
+- Add model and column metadata in `models/schema.yml`.
+- Add at least one uniqueness or grain test, required `not_null` tests, and one data quality assertion where the model produces measures.
+- Use `DEMO_MODE` overlays or seeds when live `ACCOUNT_USAGE` data would make tests brittle.
 
-```bash
-dbt deps --profiles-dir .ci/profiles
-```
+## CI Expectations
 
-3. Feature flags
+Every PR must pass dbt parse. Snowflake-backed compile, build, test, and freshness checks run when repository secrets are configured. Source freshness is warn-only until the fresh trial account has baseline data.
 
-The starter includes a stub model guarded by the var `enable_pro_pack`. To enable Pro models in local runs:
+## Pull Requests
 
-```bash
-dbt build --vars '{"enable_pro_pack": true}' --profiles-dir .ci/profiles
-```
-
-## CI notes
-
-- The `snowflake-finops-pro` repository contains a GitHub Actions workflow that checks out this repo and runs an integration pass on Pro PRs. It requires a `FINOPS_DBT_READ_TOKEN` secret in the Pro repo.
-- Keep `packages.yml` pinned to semver tags for production.
-
-## API manifest
-
-`PRO_PUBLIC_API.yml` is generated within `snowflake-finops-pro` and lists models/macros considered part of the public contract. API changes should update that file.
+Keep changes scoped to one feature or fix. Do not commit `.env`, local profiles, generated `target/` artifacts, or private package overrides. Note any live Snowflake validation gaps in the PR description.

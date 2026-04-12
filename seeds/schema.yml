@@ -11,4 +11,17 @@ seeds:
         tests: [not_null]
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: [date, department]
+          arguments:
+            combination_of_columns: [date, department]
+
+  - name: storage_demo_seed
+    description: "Synthetic STORAGE_USAGE data for DEMO_MODE (4 databases x 75 days)."
+    columns:
+      - name: USAGE_DATE
+        tests: [not_null]
+      - name: DATABASE_NAME
+        tests: [not_null]
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [USAGE_DATE, DATABASE_NAME]

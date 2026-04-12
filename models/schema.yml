@@ -122,7 +122,8 @@ models:
               arguments: {min_value: 0}
     tests:
       - dbt_utils.unique_combination_of_columns:
-          combination_of_columns: [usage_date, department]
+          arguments:
+            combination_of_columns: [usage_date, department]
   - name: dim_department
     columns:
       - name: warehouse_name
@@ -131,3 +132,178 @@ models:
           - unique
       - name: department
         tests: [not_null]
+
+  # v3.0.0 models
+
+  - name: stg_storage_usage
+    description: "Normalizes STORAGE_USAGE; bytes to TB, configurable daily storage cost rate."
+    columns:
+      - name: storage_snapshot_id
+        tests:
+          - not_null
+          - unique
+      - name: usage_date
+        tests: [not_null]
+      - name: database_name
+        tests: [not_null]
+      - name: total_storage_tb
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+      - name: estimated_storage_cost_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+
+  - name: fct_daily_storage_costs
+    description: "Daily storage cost by database with MTD running totals and 30-day rolling averages."
+    config:
+      contract:
+        enforced: true
+    tests:
+      - unique:
+          column_name: daily_storage_key
+    columns:
+      - name: daily_storage_key
+        data_type: varchar
+      - name: usage_date
+        data_type: date
+        tests: [not_null]
+      - name: database_id
+        data_type: number
+      - name: database_name
+        data_type: varchar
+        tests: [not_null]
+      - name: active_storage_tb
+        data_type: number
+      - name: failsafe_storage_tb
+        data_type: number
+      - name: stage_storage_tb
+        data_type: number
+      - name: total_storage_tb
+        data_type: number
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+      - name: estimated_active_cost_usd
+        data_type: number
+      - name: estimated_failsafe_cost_usd
+        data_type: number
+      - name: estimated_stage_cost_usd
+        data_type: number
+      - name: estimated_storage_cost_usd
+        data_type: number
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+      - name: month_to_date_storage_cost
+        data_type: number
+      - name: storage_cost_30day_avg
+        data_type: number
+
+  - name: fct_cost_forecast
+    description: "30-day warehouse-level cost forecast using rolling-avg + trend slope + DOW seasonality."
+    columns:
+      - name: forecast_id
+        tests:
+          - not_null
+          - unique
+      - name: forecast_date
+        tests: [not_null]
+      - name: warehouse_name
+        tests: [not_null]
+      - name: forecasted_cost_usd
+        tests:
+          - not_null
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+      - name: days_ahead
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 1, max_value: 30}
+      - name: confidence_band_low
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+      - name: confidence_band_high
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+
+  - name: fct_total_cost_summary
+    description: "Total Snowflake spend by cost category (COMPUTE, STORAGE, AUTO_CLUSTERING, etc.) per day."
+    columns:
+      - name: total_cost_summary_id
+        tests:
+          - not_null
+          - unique
+      - name: usage_date
+        tests: [not_null]
+      - name: cost_category
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: ['COMPUTE', 'STORAGE', 'AUTO_CLUSTERING', 'SERVERLESS', 'OTHER']
+      - name: cost_usd
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+      - name: pct_of_daily_total
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0, max_value: 100}
+
+  - name: int_top_spenders
+    description: "Query activity by user x role x database x warehouse x day. Pro mode adds estimated cost."
+    columns:
+      - name: usage_date
+        tests: [not_null]
+      - name: user_name
+        tests: [not_null]
+      - name: query_count
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 1}
+      - name: total_runtime_seconds
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+      - name: gb_scanned
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0}
+
+  - name: fct_top_spenders
+    description: "Ranked user leaderboard by daily cost/volume with shares and rolling aggregates."
+    columns:
+      - name: top_spender_id
+        tests:
+          - not_null
+          - unique
+      - name: usage_date
+        tests: [not_null]
+      - name: user_name
+        tests: [not_null]
+      - name: query_count
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 1}
+      - name: pct_of_daily_query_total
+        tests:
+          - dbt_expectations.expect_column_values_to_be_between:
+              arguments: {min_value: 0, max_value: 100}
+
+  - name: dim_warehouse
+    description: "Warehouse metadata derived from metering and query history for fresh-account compatibility."
+    columns:
+      - name: warehouse_name
+        tests:
+          - not_null
+      - name: warehouse_size
+        tests:
+          - accepted_values:
+              arguments:
+                values: ['X-SMALL','SMALL','MEDIUM','LARGE','X-LARGE','2X-LARGE','3X-LARGE','4X-LARGE']
+              config:
+                where: "warehouse_size is not null"

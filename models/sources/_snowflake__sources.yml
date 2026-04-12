@@ -5,11 +5,21 @@ sources:
     description: Snowflake Account Usage schema
     database: "{{ var('account_usage_database', 'SNOWFLAKE') }}"
     schema: "{{ var('account_usage_schema', 'ACCOUNT_USAGE') }}"
-    freshness:
-      warn_after: {count: 48, period: hour}
-      error_after: {count: 96, period: hour}
+    config:
+      freshness:
+        warn_after: {count: 48, period: hour}
+        error_after: {count: 96, period: hour}
     tables:
       - name: WAREHOUSE_METERING_HISTORY
-        loaded_at_field: START_TIME
+        config:
+          loaded_at_field: START_TIME
       - name: QUERY_HISTORY
-        loaded_at_field: END_TIME
+        config:
+          loaded_at_field: END_TIME
+      - name: STORAGE_USAGE
+        config:
+          loaded_at_field: USAGE_DATE
+        # Daily snapshot; one row per database per day.
+        # Columns: USAGE_DATE, DATABASE_ID, DATABASE_NAME,
+        #          AVERAGE_DATABASE_BYTES, AVERAGE_FAILSAFE_BYTES,
+        #          AVERAGE_STAGE_BYTES (added ~2023)

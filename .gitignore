@@ -2,6 +2,7 @@ target/
 logs/
 dbt_packages/
 /profiles.yml
+.ci/profiles/.user.yml
 .env
 .env.*
 !.env.example
