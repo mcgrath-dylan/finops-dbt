@@ -1,4 +1,4 @@
-name: Nightly — dbt Docs (Base & Pro)
+name: Nightly - dbt Docs (Base & Pro)
 
 permissions:
   contents: write
@@ -76,9 +76,11 @@ jobs:
           mkdir -p "$TARGET_PATH"
           if dbt docs generate \
             --profiles-dir ${{ env.DBT_PROFILES_DIR }} \
-            --target prod \
+            --target demo \
             --target-path "$TARGET_PATH" \
             --vars "${DBT_DOCS_VARS}" \
+            --no-compile \
+            --empty-catalog \
             --exclude tag:backlog \
             --exclude source:account_usage_backlog \
             --exclude fqn:metering_demo_seed,resource_type:seed \
@@ -114,7 +116,7 @@ jobs:
             {
               echo '<!doctype html><meta charset="utf-8"><title>finops-dbt docs</title>'
               echo '<style>body{font-family:ui-sans-serif,system-ui,-apple-system;max-width:720px;margin:40px auto;padding:0 16px}a{display:block;margin:12px 0;font-size:18px}</style>'
-              echo '<h1>finops-dbt — documentation (nightly)</h1>'
+              echo '<h1>finops-dbt documentation (nightly)</h1>'
               if [ -d site/base ]; then
                 echo '<a href="base/index.html">Base (Starter)</a>'
               fi

@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Top spenders:** `int_top_spenders` + `fct_top_spenders` adds a ranked user leaderboard by query volume with optional Pro cost estimates.
 - **Warehouse dimension:** `dim_warehouse` adds warehouse metadata from metering and query history for fresh-account compatibility.
 - New dbt_project vars: `storage_cost_per_tb_per_month`, `forecast_lookback_days`, `storage_history_days`.
-- STORAGE_USAGE and WAREHOUSES added to Starter sources.
+- STORAGE_USAGE added to Starter sources.
 - Schema tests for all 8 new models.
 - Streamlit dashboard: total cost breakdown, forecast chart, storage costs section, and top users leaderboard.
 - Forecast KPI now uses the dbt model instead of naive MTD run-rate extrapolation.
