@@ -81,7 +81,7 @@ make demo
 | Capability | Starter | Pro add-on |
 | --- | :---: | :---: |
 | Daily compute spend from `WAREHOUSE_METERING_HISTORY` | Yes | Yes |
-| Daily storage spend from `STORAGE_USAGE` | Yes | Yes |
+| Daily storage spend from `DATABASE_STORAGE_USAGE_HISTORY` | Yes | Yes |
 | Department showback and budget variance | Yes | Yes |
 | 30-day warehouse cost forecast | Yes | Yes |
 | Compute + storage total cost summary | Yes | Yes |
@@ -99,7 +99,7 @@ Starter is Apache-2.0. The Pro add-on is licensed separately and is not required
 flowchart LR
   WMH[(WAREHOUSE_METERING_HISTORY)]
   QH[(QUERY_HISTORY)]
-  SU[(STORAGE_USAGE)]
+  SU[(DATABASE_STORAGE_USAGE_HISTORY)]
   BUD[(budget_daily seed)]
   MAP[(department_mapping seed)]
 
@@ -139,7 +139,7 @@ Fresh trial accounts have sparse `ACCOUNT_USAGE` data. The demo seed path is the
 | --- | --- |
 | `METERING_HISTORY` / `QUERY_HISTORY` | Up to 45 minutes |
 | `WAREHOUSE_METERING_HISTORY` | Up to 3 hours |
-| `STORAGE_USAGE` | Daily refresh |
+| `DATABASE_STORAGE_USAGE_HISTORY` | Up to 3 hours |
 
 Run `scripts/generate_demo_workload.sql` 2-3 times over several days before treating live `ACCOUNT_USAGE` row counts as representative.
 
@@ -163,5 +163,13 @@ Published dbt docs include model descriptions, column tests, and lineage:
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
+
+## Consulting & Services
+
+finops-dbt is free and Apache-2.0. If your team wants it deployed and configured
+on your Snowflake account without the setup time, I offer three tiers: Quickstart,
+Full Implementation, and Advisory, starting at $3K.
+
+See [CONSULTING.md](CONSULTING.md) for pricing, scope, and contact details.
 
 Questions or implementation help: mcgrath.fintech@gmail.com
