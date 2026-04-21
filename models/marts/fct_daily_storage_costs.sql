@@ -35,24 +35,24 @@ with_trends as (
         round(total_storage_tb, 6)              as total_storage_tb,
 
         -- Daily cost components
-        round(estimated_active_cost_usd, 2)     as estimated_active_cost_usd,
-        round(estimated_failsafe_cost_usd, 2)   as estimated_failsafe_cost_usd,
-        round(estimated_stage_cost_usd, 2)      as estimated_stage_cost_usd,
-        round(estimated_storage_cost_usd, 2)    as estimated_storage_cost_usd,
+        round(estimated_active_cost_usd, 9)     as estimated_active_cost_usd,
+        round(estimated_failsafe_cost_usd, 9)   as estimated_failsafe_cost_usd,
+        round(estimated_stage_cost_usd, 9)      as estimated_stage_cost_usd,
+        round(estimated_storage_cost_usd, 9)    as estimated_storage_cost_usd,
 
         -- Month-to-date (running sum within each database x calendar month)
         round(sum(estimated_storage_cost_usd) over (
             partition by database_name, date_trunc('month', usage_date)
             order by usage_date
             rows between unbounded preceding and current row
-        ), 2)                                   as month_to_date_storage_cost,
+        ), 9)                                   as month_to_date_storage_cost,
 
         -- 30-day rolling average
         round(avg(estimated_storage_cost_usd) over (
             partition by database_name
             order by usage_date
             rows between 29 preceding and current row
-        ), 2)                                   as storage_cost_30day_avg
+        ), 9)                                   as storage_cost_30day_avg
 
     from storage
 

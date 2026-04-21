@@ -22,42 +22,42 @@ models:
                 to: ref('stg_warehouse_metering')
                 field: warehouse_name
       - name: compute_credits      # ::number(38,3)
-        data_type: number
-      - name: compute_cost         # ::number(38,2)
-        data_type: number
+        data_type: number(38,3)
+      - name: compute_cost         # ::number(38,6)
+        data_type: number(38,6)
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments: {min_value: 0}
-      - name: cloud_services_cost  # ::number(38,2)
-        data_type: number
-      - name: total_cost           # ::number(38,2)
-        data_type: number
-      - name: idle_cost            # ::number(38,2)
-        data_type: number
+      - name: cloud_services_cost  # ::number(38,6)
+        data_type: number(38,6)
+      - name: total_cost           # ::number(38,6)
+        data_type: number(38,6)
+      - name: idle_cost            # ::number(38,6)
+        data_type: number(38,6)
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments: {min_value: 0}
-      - name: productive_cost      # ::number(38,2)
-        data_type: number
+      - name: productive_cost      # ::number(38,6)
+        data_type: number(38,6)
       - name: total_queries        # ::number(38,0)
-        data_type: number
+        data_type: number(38,0)
       - name: avg_concurrent_users # ::number(38,2)
-        data_type: number
-      - name: cost_per_query       # ::number(38,4)
-        data_type: number
+        data_type: number(38,2)
+      - name: cost_per_query       # ::number(38,6)
+        data_type: number(38,6)
       - name: efficiency_score     # ::number(5,2)
-        data_type: number
+        data_type: number(5,2)
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments: {min_value: 0, max_value: 100, row_condition: "efficiency_score is not null"}
-      - name: month_to_date_cost   # ::number(38,2)
-        data_type: number
-      - name: cost_7day_avg        # ::number(38,2)
-        data_type: number
-      - name: day_over_day_change  # ::number(38,2)
-        data_type: number
-      - name: week_over_week_change # ::number(38,2)
-        data_type: number
+      - name: month_to_date_cost   # ::number(38,6)
+        data_type: number(38,6)
+      - name: cost_7day_avg        # ::number(38,6)
+        data_type: number(38,6)
+      - name: day_over_day_change  # ::number(38,6)
+        data_type: number(38,6)
+      - name: week_over_week_change # ::number(38,6)
+        data_type: number(38,6)
       - name: daily_cost_key       # surrogate key
         data_type: varchar
       - name: _loaded_at           # cast(current_timestamp() as timestamp_ntz)
@@ -170,36 +170,36 @@ models:
         data_type: date
         tests: [not_null]
       - name: database_id
-        data_type: number
+        data_type: number(38,0)
       - name: database_name
         data_type: varchar
         tests: [not_null]
       - name: active_storage_tb
-        data_type: number
+        data_type: number(38,6)
       - name: failsafe_storage_tb
-        data_type: number
+        data_type: number(38,6)
       - name: stage_storage_tb
-        data_type: number
+        data_type: number(38,6)
       - name: total_storage_tb
-        data_type: number
+        data_type: number(38,6)
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments: {min_value: 0}
       - name: estimated_active_cost_usd
-        data_type: number
+        data_type: number(38,9)
       - name: estimated_failsafe_cost_usd
-        data_type: number
+        data_type: number(38,9)
       - name: estimated_stage_cost_usd
-        data_type: number
+        data_type: number(38,9)
       - name: estimated_storage_cost_usd
-        data_type: number
+        data_type: number(38,9)
         tests:
           - dbt_expectations.expect_column_values_to_be_between:
               arguments: {min_value: 0}
       - name: month_to_date_storage_cost
-        data_type: number
+        data_type: number(38,9)
       - name: storage_cost_30day_avg
-        data_type: number
+        data_type: number(38,9)
 
   - name: fct_cost_forecast
     description: "30-day warehouse-level cost forecast using rolling-avg + trend slope + DOW seasonality."

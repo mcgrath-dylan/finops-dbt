@@ -12,6 +12,11 @@ class AppRegressionTests(unittest.TestCase):
         self.assertEqual(fmt_usd(-11760), "-$11,760")
         self.assertEqual(fmt_usd(-12.34, 2), "-$12.34")
 
+    def test_fmt_usd_shows_sub_dollar_values(self):
+        self.assertEqual(fmt_usd(2.67), "$2.67")
+        self.assertEqual(fmt_usd(0.47), "$0.47")
+        self.assertEqual(fmt_usd(0.004), "<$0.01")
+
     def test_streamlit_app_does_not_pass_module_to_kpi(self):
         source = (ROOT / "app" / "streamlit_app.py").read_text(encoding="utf-8")
         self.assertNotIn("kpi(st", source)

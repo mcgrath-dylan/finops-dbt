@@ -30,18 +30,18 @@ daily_summary as (
         warehouse_name::varchar                            as warehouse_name,
 
         compute_credits::number(38,3)                      as compute_credits,
-        compute_cost::number(38,2)                         as compute_cost,
-        cloud_services_cost::number(38,2)                  as cloud_services_cost,
-        total_cost::number(38,2)                           as total_cost,
+        compute_cost::number(38,6)                         as compute_cost,
+        cloud_services_cost::number(38,6)                  as cloud_services_cost,
+        total_cost::number(38,6)                           as total_cost,
 
-        least(idle_cost, compute_cost)::number(38,2)       as idle_cost,
-        greatest(compute_cost - idle_cost, 0)::number(38,2) as productive_cost,
+        least(idle_cost, compute_cost)::number(38,6)       as idle_cost,
+        greatest(compute_cost - idle_cost, 0)::number(38,6) as productive_cost,
 
         total_queries::number(38,0)                        as total_queries,
         avg_concurrent_users::number(38,2)                 as avg_concurrent_users,
 
         case when total_queries > 0
-             then (compute_cost / nullif(total_queries,0))::number(38,4)
+             then (compute_cost / nullif(total_queries,0))::number(38,6)
         end                                                as cost_per_query,
 
         case when compute_cost > 0
@@ -53,21 +53,21 @@ daily_summary as (
         sum(total_cost) over (
             partition by date_trunc('month', usage_date), warehouse_name
             order by usage_date
-        )::number(38,2)                                    as month_to_date_cost,
+        )::number(38,6)                                    as month_to_date_cost,
 
         avg(total_cost) over (
             partition by warehouse_name
             order by usage_date
             rows between 6 preceding and current row
-        )::number(38,2)                                    as cost_7day_avg,
+        )::number(38,6)                                    as cost_7day_avg,
 
         (total_cost - lag(total_cost, 1) over (
             partition by warehouse_name order by usage_date
-        ))::number(38,2)                                   as day_over_day_change,
+        ))::number(38,6)                                   as day_over_day_change,
 
         (total_cost - lag(total_cost, 7) over (
             partition by warehouse_name order by usage_date
-        ))::number(38,2)                                   as week_over_week_change
+        ))::number(38,6)                                   as week_over_week_change
 
     from compute_costs
 )
