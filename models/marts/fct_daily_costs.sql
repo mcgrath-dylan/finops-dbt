@@ -34,8 +34,8 @@ daily_summary as (
         cloud_services_cost::number(38,2)                  as cloud_services_cost,
         total_cost::number(38,2)                           as total_cost,
 
-        idle_cost::number(38,2)                            as idle_cost,
-        (compute_cost - idle_cost)::number(38,2)           as productive_cost,
+        least(idle_cost, compute_cost)::number(38,2)       as idle_cost,
+        greatest(compute_cost - idle_cost, 0)::number(38,2) as productive_cost,
 
         total_queries::number(38,0)                        as total_queries,
         avg_concurrent_users::number(38,2)                 as avg_concurrent_users,
@@ -45,7 +45,7 @@ daily_summary as (
         end                                                as cost_per_query,
 
         case when compute_cost > 0
-             then (100 * (1 - (idle_cost / nullif(compute_cost,0))))::number(5,2)
+             then greatest(0, least(100, 100 * (1 - (least(idle_cost, compute_cost) / nullif(compute_cost,0)))))::number(5,2)
              else 100::number(5,2)
         end                                                as efficiency_score,
 

@@ -136,7 +136,7 @@ models:
   # v3.0.0 models
 
   - name: stg_storage_usage
-    description: "Normalizes STORAGE_USAGE; bytes to TB, configurable daily storage cost rate."
+    description: "Normalizes DATABASE_STORAGE_USAGE_HISTORY; bytes to TB, configurable daily storage cost rate."
     columns:
       - name: storage_snapshot_id
         tests:

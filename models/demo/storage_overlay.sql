@@ -2,13 +2,13 @@
   config(
     materialized='table',
     schema='DEMO',
-    alias='STORAGE_USAGE'
+    alias='DATABASE_STORAGE_USAGE_HISTORY'
   )
 }}
 
 {#
   storage_overlay
-  DEMO_MODE counterpart to ACCOUNT_USAGE.STORAGE_USAGE.
+  DEMO_MODE counterpart to ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY.
   Reads from storage_demo_seed and normalizes column names to match
   the live source schema. Used by storage_relation() macro.
 #}
@@ -20,8 +20,7 @@ with base as (
         DATABASE_ID::number              as DATABASE_ID,
         DATABASE_NAME::varchar           as DATABASE_NAME,
         AVERAGE_DATABASE_BYTES::number   as AVERAGE_DATABASE_BYTES,
-        AVERAGE_FAILSAFE_BYTES::number   as AVERAGE_FAILSAFE_BYTES,
-        AVERAGE_STAGE_BYTES::number      as AVERAGE_STAGE_BYTES
+        AVERAGE_FAILSAFE_BYTES::number   as AVERAGE_FAILSAFE_BYTES
     from {{ ref('storage_demo_seed') }}
 
 )

@@ -1,5 +1,6 @@
 name: 'snowflake_finops'
 version: '3.0.0'
+require-dbt-version: [">=1.8.0", "<2.0.0"]
 config-version: 2
 
 profile: 'snowflake_finops'
@@ -35,7 +36,7 @@ vars:
   storage_cost_per_tb_per_month: "{{ env_var('STORAGE_COST_PER_TB_PER_MONTH', '23.0') | as_number }}"
   # Forecast lookback window (days of actuals used for trend calculation)
   forecast_lookback_days: "{{ env_var('FORECAST_LOOKBACK_DAYS', '60') | int }}"
-  # Storage history for full refresh (avoid scanning entire STORAGE_USAGE table)
+  # Storage history for full refresh (avoid scanning entire DATABASE_STORAGE_USAGE_HISTORY view)
   storage_history_days: "{{ env_var('STORAGE_HISTORY_DAYS', '365') | int }}"
 
 models:

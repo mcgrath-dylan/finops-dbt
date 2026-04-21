@@ -119,7 +119,7 @@ select
     credits_used_cloud_services,
     compute_cost_usd,
     cloud_services_cost_usd,
-    (total_cost_usd - compute_cost_usd) as idle_cost_usd, -- informational; equals cloud_services_cost_usd
+    (total_cost_usd - total_cost_usd) as idle_cost_usd,
     total_cost_usd,
     metering_id,
     _loaded_at

@@ -4,7 +4,7 @@ with daily_actuals as (
   select
     f.usage_date,
     coalesce(nullif(trim(m.department), ''), 'Unassigned') as department,
-    sum(f.compute_cost + f.idle_cost) as actual_cost_usd
+    sum(f.total_cost) as actual_cost_usd
   from {{ ref('fct_daily_costs') }} f
   left join {{ ref('department_mapping') }} m
     on upper(f.warehouse_name) = upper(m.warehouse_name)

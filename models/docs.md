@@ -2,7 +2,7 @@
 **FinOps for Snowflake Starter (v3.0.0)**
 
 - Authoritative compute spend from `ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY`
-- Storage cost tracking from `ACCOUNT_USAGE.STORAGE_USAGE`
+- Storage cost tracking from `ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY`
 - Layered dbt models: staging to intermediate to marts
 - Marts: daily compute costs, daily storage costs, cost forecast, total cost summary, budget vs actual, top spenders, department showback
 - Warehouse dimension with size/config metadata
@@ -12,14 +12,16 @@
 {% enddocs %}
 
 {% docs stg_storage_usage %}
-Normalizes `ACCOUNT_USAGE.STORAGE_USAGE` into a cost-ready staging layer.
+Normalizes `ACCOUNT_USAGE.DATABASE_STORAGE_USAGE_HISTORY` into a cost-ready staging layer.
 Converts bytes to terabytes and applies a configurable daily storage rate
 (default: $23/TB/month on-demand). Grain: one row per database per calendar day.
 {% enddocs %}
 
 {% docs fct_daily_storage_costs %}
 Daily storage cost by database with month-to-date running totals and 30-day rolling averages.
-Breaks cost into active table and clone storage, failsafe retention, and internal stage components.
+Breaks cost into active database storage and failsafe retention. Internal stage
+storage is account-level in Snowflake and is not allocated to databases in the
+Starter per-database mart.
 Contract-enforced schema.
 {% enddocs %}
 

@@ -16,10 +16,10 @@ sources:
       - name: QUERY_HISTORY
         config:
           loaded_at_field: END_TIME
-      - name: STORAGE_USAGE
+      - name: DATABASE_STORAGE_USAGE_HISTORY
         config:
           loaded_at_field: cast(USAGE_DATE as timestamp_ntz)
         # Daily snapshot; one row per database per day.
         # Columns: USAGE_DATE, DATABASE_ID, DATABASE_NAME,
         #          AVERAGE_DATABASE_BYTES, AVERAGE_FAILSAFE_BYTES,
-        #          AVERAGE_STAGE_BYTES (added ~2023)
+        #          plus newer lifecycle-policy columns on some accounts.

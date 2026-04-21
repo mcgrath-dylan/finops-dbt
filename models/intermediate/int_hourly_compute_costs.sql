@@ -166,7 +166,7 @@ hourly_costs as (
         end as is_potentially_idle,
 
         case
-            when coalesce(q.query_count, 0) = 0 and m.total_credits_used > 0 then m.total_cost_usd
+            when coalesce(q.query_count, 0) = 0 and m.total_credits_used > 0 then m.compute_cost_usd
             else 0
         end as idle_cost_usd,
 
