@@ -2,6 +2,7 @@
 import os
 import calendar
 import datetime as dt
+import html
 from typing import Optional, Dict, List
 
 # Load .env so flags like ENABLE_PRO_PACK are available to the app
@@ -14,6 +15,11 @@ except Exception:
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+try:
+    from app.formatting import fmt_usd
+except ModuleNotFoundError:
+    from formatting import fmt_usd
 
 try:
     import plotly.express as px
@@ -54,16 +60,6 @@ REPO_URL = os.getenv("FINOPS_REPO_URL", "https://github.com/mcgrath-dylan/finops
 PRO_DATABASE = (os.getenv("PRO_DATABASE") or "").strip()
 PRO_SCHEMA = (os.getenv("PRO_SCHEMA") or "").strip()
 PRO_PACK_FLAG = env_bool("ENABLE_PRO_PACK", False)
-
-def fmt_usd(x: Optional[float], decimals: int = 0) -> str:
-    if x is None:
-        return "—"
-    try:
-        if np.isnan(x) or np.isinf(x):
-            return "—"
-    except Exception:
-        pass
-    return f"${x:,.{decimals}f}" if decimals else f"${x:,.0f}"
 
 def lc(df: Optional[pd.DataFrame]) -> pd.DataFrame:
     if df is None or df.empty:
@@ -532,9 +528,13 @@ st.markdown(
 .pill-demo{background:#2d3748;color:#e2e8f0;border:1px solid #4a5568}
 .pill-live{background:#234e52;color:#c6f6d5;border:1px solid #2c7a7b}
 
-.kpi{border:1px solid rgba(250,250,250,.08);background:rgba(255,255,255,.03);border-radius:14px;padding:14px 16px}
+.kpi{border:1px solid rgba(250,250,250,.08);background:rgba(255,255,255,.03);border-radius:8px;padding:14px 16px;min-height:104px}
 .kpi-title{font-size:.85rem;color:#c9d1d9;margin-bottom:4px}
 .kpi-value{font-size:1.4rem;font-weight:700}
+.kpi-value-success{color:#10b981}
+.kpi-value-danger{color:#e11d48}
+.kpi-value-neutral{color:#c9d1d9}
+.kpi-note{font-size:.875rem;color:#9aa4af;margin-top:6px;line-height:1.35}
 
 /* kill any lingering progress/skeleton bars inside KPI cards */
 .kpi [data-testid="stProgress"], .kpi div[role="progressbar"] { display:none !important; }
@@ -733,69 +733,84 @@ if not demo_mode and freshness_hours is not None:
         st.warning(f"Data may be slightly stale (~{freshness_hours:.1f}h).")
 
 # -------- KPI grid ----------------------------------------
-row1 = st.columns(3)
-row2 = st.columns(2)
+def kpi(title: str, value: str, note: str = "", tone: str = ""):
+    tone_class = f" kpi-value-{tone}" if tone else ""
+    note_html = f'<div class="kpi-note">{html.escape(str(note))}</div>' if note else ""
+    st.markdown(
+        (
+            '<div class="kpi">'
+            f'<div class="kpi-title">{html.escape(str(title))}</div>'
+            f'<div class="kpi-value{tone_class}">{html.escape(str(value))}</div>'
+            f'{note_html}'
+            '</div>'
+        ),
+        unsafe_allow_html=True,
+    )
 
-def kpi(container, title, value, note=""):
-    with container:
-        st.markdown('<div class="kpi">', unsafe_allow_html=True)
-        st.markdown(f'<div class="kpi-title">{title}</div>', unsafe_allow_html=True)
-        st.markdown(f'<div class="kpi-value">{value}</div>', unsafe_allow_html=True)
-        if note:
-            st.caption(note)
-        st.markdown("</div>", unsafe_allow_html=True)
+row1 = st.columns(3 if PRO_PACK_FLAG else 2)
+with row1[0]:
+    kpi("Month-to-date Spend", fmt_usd(mtd_total), f"Through {today.strftime('%b %d')} of a {dim}-day month")
+with row1[1]:
+    kpi("Forecast (month)", fmt_usd(forecast_month), forecast_method_label)
+if PRO_PACK_FLAG:
+    with row1[2]:
+        flagged_display = "—" if warehouses_flagged is None else f"{warehouses_flagged} flagged"
+        est_display = fmt_usd(estimated_savings) if estimated_savings is not None else "—"
+        credit_display = f"${CREDIT_PRICE:,.2f}"
+        if credit_display.endswith(".00"):
+            credit_display = credit_display[:-3]
+        if warehouses_flagged is None and estimated_savings is None:
+            caption = f"Connect Pro hourly heuristics to estimate right-sizing at {credit_display}/credit."
+        else:
+            caption = f"{est_display} estimated monthly savings at {credit_display}/credit."
+        kpi("Right-Sizing (est.)", flagged_display, caption)
 
-kpi(row1[0], "Month-to-date Spend", fmt_usd(mtd_total), f"Through {today.strftime('%b %d')} of a {dim}-day month")
-kpi(row1[1], "Forecast (month)", fmt_usd(forecast_month), forecast_method_label)
-with row1[2]:
-    st.markdown('<div class="kpi">', unsafe_allow_html=True)
-    st.markdown('<div class="kpi-title">Right-Sizing (est.)</div>', unsafe_allow_html=True)
-    col1, col2 = st.columns(2)
-    flagged_display = "—" if warehouses_flagged is None else f"{warehouses_flagged}"
-    est_display = fmt_usd(estimated_savings) if estimated_savings is not None else "—"
-    col1.metric("Warehouses flagged", flagged_display)
-    col2.metric("Est. monthly savings", est_display)
-    credit_display = f"${CREDIT_PRICE:,.2f}"
-    if credit_display.endswith(".00"):
-        credit_display = credit_display[:-3]
-    if warehouses_flagged is None and estimated_savings is None:
-        caption = (
-            f"Estimates assume CREDIT_PRICE_USD ≈ {credit_display} and stable workload hours. Install Pro for full heuristics."
-        )
-    else:
-        caption = f"Based on Pro hourly heuristics @ {credit_display}/credit (30-day estimate)."
-    st.caption(caption)
-    st.markdown("</div>", unsafe_allow_html=True)
-kpi(row2[0], f"Idle Wasted (last {days_shown} days)",
-    fmt_usd(idle_wasted_last_n) if idle_wasted_last_n is not None else "—",
-    "Sum of idle cost over the last N days")
 variance_value_disp = "—" if variance_value is None else fmt_usd(variance_value)
 variance_note = "Variance shown when budget exists"
-if variance_value is not None and variance_pct is not None:
-    variance_note = f"{variance_pct:+.0f}% vs budget"
+variance_tone = ""
+if variance_value is not None and budget_mtd is not None and budget_mtd > 0 and actual_mtd <= 0:
+    variance_note = "No spend recorded against budget"
+    variance_tone = "neutral"
+elif variance_value is not None and variance_pct is not None:
+    if variance_value > 0:
+        variance_note = f"{variance_pct:+.0f}% over budget"
+        variance_tone = "danger"
+    elif variance_value < 0:
+        variance_note = f"{abs(variance_pct):.0f}% under budget"
+        variance_tone = "success"
+    else:
+        variance_note = "On budget"
+        variance_tone = "neutral"
 elif variance_value is not None:
     variance_note = "vs actual spend"
-try:
-    if variance_value is not None:
-        color = "#e11d48" if variance_value > 0 else "#10b981"  # red/green
-        variance_value_disp = f"<span style='color:{color}'>{variance_value_disp}</span>"
-except Exception:
-    pass
-kpi(row2[1], "Variance (MTD)", variance_value_disp, variance_note)
 
-# Pro KPIs (if enabled)
-row3 = st.columns(2)
-kpi(row3[0], "Budget (MTD)", fmt_usd(budget_mtd), f"Sum through {today.strftime('%b %d')}")
-kpi(
-    row3[1],
-    "Idle (projected, month)",
-    fmt_usd(total_idle_est) if total_idle_est is not None else "—",
-    (
-        "From Pro hourly model (scaled)"
-        if total_idle_est is not None
-        else ("Pro enabled, connect PRO_DATABASE/PRO_SCHEMA to activate" if (PRO_PACK_FLAG and enable_pro) else "Turn on Pro insights to see this")
-    ),
-)
+row2 = st.columns(3)
+with row2[0]:
+    kpi(
+        f"Idle Wasted (last {days_shown} days)",
+        fmt_usd(idle_wasted_last_n) if idle_wasted_last_n is not None else "—",
+        "Compute-only idle cost over the last N days",
+    )
+with row2[1]:
+    kpi("Variance (MTD)", variance_value_disp, variance_note, variance_tone)
+with row2[2]:
+    kpi("Budget (MTD)", fmt_usd(budget_mtd), f"Sum through {today.strftime('%b %d')}")
+
+if PRO_PACK_FLAG:
+    row3 = st.columns(1)
+    with row3[0]:
+        kpi(
+            "Idle (projected, month)",
+            fmt_usd(total_idle_est) if total_idle_est is not None else "—",
+            (
+                "From Pro hourly model (scaled)"
+                if total_idle_est is not None
+                else ("Pro enabled, connect PRO_DATABASE/PRO_SCHEMA to activate" if enable_pro else "Turn on Pro insights to see this")
+            ),
+        )
+
+if not demo_mode and mtd_total <= 0:
+    st.info("No live compute spend found in the current month. Check ACCOUNT_USAGE lag, warehouse mapping, and whether the workload warehouse has metering history.")
 
 st.divider()
 
@@ -820,8 +835,11 @@ if not total_cost_df.empty and "cost_category" in total_cost_df.columns:
             else:
                 st.dataframe(mtd_summary, hide_index=True)
         with right_tc:
-            kpi(st, "Total Snowflake Spend (MTD)", fmt_usd(total_all),
-                f"{len(mtd_summary)} cost categories through {today.strftime('%b %d')}")
+            kpi(
+                "Total Snowflake Spend (MTD)",
+                fmt_usd(total_all),
+                f"{len(mtd_summary)} cost categories through {today.strftime('%b %d')}",
+            )
     st.divider()
 
 # -------- Cost Forecast Chart (v3.0.0) -------------------------------------
@@ -871,9 +889,12 @@ if not storage_df.empty and "estimated_storage_cost_usd" in storage_df.columns:
     )
     stor_mtd = storage_df[storage_df["usage_date"] >= first_day]
     storage_mtd_total = float(stor_mtd["estimated_storage_cost_usd"].sum()) if not stor_mtd.empty else 0.0
+    storage_window_total = float(storage_df["estimated_storage_cost_usd"].sum())
     left_s, right_s = st.columns([2, 1])
     with left_s:
-        if PLOTLY:
+        if storage_window_total <= 0:
+            st.info("No nonzero storage cost found in the selected window. Small fresh accounts can legitimately round to $0 at the current TB/month rate.")
+        elif PLOTLY:
             stor_daily = storage_df.groupby("usage_date", as_index=False).agg(
                 active=("estimated_active_cost_usd", "sum"),
                 failsafe=("estimated_failsafe_cost_usd", "sum"),
@@ -881,12 +902,15 @@ if not storage_df.empty and "estimated_storage_cost_usd" in storage_df.columns:
             )
             import plotly.graph_objects as go
             fig_s = go.Figure()
-            fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["active"],
-                                        stackgroup="one", name="Active"))
-            fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["failsafe"],
-                                        stackgroup="one", name="Failsafe"))
-            fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["stage"],
-                                        stackgroup="one", name="Stage"))
+            if float(stor_daily["active"].abs().sum()) > 0:
+                fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["active"],
+                                            stackgroup="one", name="Active"))
+            if float(stor_daily["failsafe"].abs().sum()) > 0:
+                fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["failsafe"],
+                                            stackgroup="one", name="Failsafe"))
+            if float(stor_daily["stage"].abs().sum()) > 0:
+                fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["stage"],
+                                            stackgroup="one", name="Stage"))
             fig_s.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified")
             fig_s.update_yaxes(tickprefix="$", separatethousands=True, title="")
             fig_s.update_xaxes(title="")
@@ -894,7 +918,7 @@ if not storage_df.empty and "estimated_storage_cost_usd" in storage_df.columns:
         else:
             st.dataframe(storage_df.head(rows_to_show), hide_index=True)
     with right_s:
-        kpi(st, "Storage (MTD)", fmt_usd(storage_mtd_total), f"Through {today.strftime('%b %d')}")
+        kpi("Storage (MTD)", fmt_usd(storage_mtd_total), f"Through {today.strftime('%b %d')}")
         top_dbs = (storage_df.groupby("database_name", as_index=False)["estimated_storage_cost_usd"]
                    .sum().sort_values("estimated_storage_cost_usd", ascending=False).head(rows_to_show))
         if not top_dbs.empty:
@@ -903,6 +927,8 @@ if not storage_df.empty and "estimated_storage_cost_usd" in storage_df.columns:
             st.dataframe(top_dbs[["database_name", "cost"]].rename(columns={"database_name": "Database", "cost": "Cost"}),
                          hide_index=True, width="stretch")
     st.divider()
+elif not demo_mode:
+    st.info("No live storage cost rows found. Check DATABASE_STORAGE_USAGE_HISTORY latency and the dbt build target.")
 
 # -------- Top Users (v3.0.0) -----------------------------------------------
 if not top_spenders_df.empty and "user_name" in top_spenders_df.columns:
