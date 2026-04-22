@@ -611,14 +611,18 @@ forecast_month_inline = (mtd_total / max(elapsed, 1)) * dim if mtd_total > 0 els
 forecast_month_inline = max(forecast_month_inline, mtd_total)
 
 # Use the dbt forecast model when available; fall back to inline run-rate
-forecast_method_label = "MTD run-rate x days in month"
+forecast_title = "Run-rate estimate"
+forecast_note = "Forecast model needs 7+ days of warehouse history"
+forecast_tone = "neutral"
 if not forecast_df.empty and "forecasted_cost_usd" in forecast_df.columns:
     remaining_forecast = float(forecast_df.loc[
         forecast_df["forecast_date"] <= dt.date(today.year, today.month, dim_count(today)),
         "forecasted_cost_usd"
     ].sum())
     forecast_month = mtd_total + remaining_forecast
-    forecast_method_label = "Rolling avg + trend model"
+    forecast_title = "Forecast"
+    forecast_note = "Rolling avg + trend model"
+    forecast_tone = ""
 else:
     forecast_month = forecast_month_inline
 
@@ -751,7 +755,7 @@ row1 = st.columns(3 if PRO_PACK_FLAG else 2)
 with row1[0]:
     kpi("Month-to-date Spend", fmt_usd(mtd_total), f"Through {today.strftime('%b %d')} of a {dim}-day month")
 with row1[1]:
-    kpi("Forecast (month)", fmt_usd(forecast_month), forecast_method_label)
+    kpi(forecast_title, fmt_usd(forecast_month), forecast_note, forecast_tone)
 if PRO_PACK_FLAG:
     with row1[2]:
         flagged_display = "—" if warehouses_flagged is None else f"{warehouses_flagged} flagged"
