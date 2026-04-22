@@ -25,3 +25,11 @@ seeds:
       - dbt_utils.unique_combination_of_columns:
           arguments:
             combination_of_columns: [USAGE_DATE, DATABASE_NAME]
+
+  - name: query_history_demo_seed
+    description: "Synthetic QUERY_HISTORY data for DEMO_MODE, aligned to demo metering warehouses."
+    columns:
+      - name: QUERY_ID
+        tests: [not_null, unique]
+      - name: WAREHOUSE_NAME
+        tests: [not_null]

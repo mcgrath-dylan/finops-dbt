@@ -51,7 +51,7 @@
 
 with source as (
     select *
-    from {{ source('account_usage', 'QUERY_HISTORY') }}
+    from {{ query_history_relation() }}
     where START_TIME >= dateadd('day', -{{ var('query_history_days') }}, current_date())
     {% if is_incremental() %}
       {% if query_history_watermark_column == 'usage_hour_ntz' %}
