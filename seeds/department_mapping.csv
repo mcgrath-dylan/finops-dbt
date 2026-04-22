@@ -1,6 +1,5 @@
 warehouse_name,department
 BI_WH,Business Intelligence
-CLOUD_SERVICES_ONLY,Data Platform
 COMPUTE_WH,Data Platform
 ETL_WH,Data Platform
 FINOPS_WH,Data Platform

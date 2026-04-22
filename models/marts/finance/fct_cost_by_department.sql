@@ -3,7 +3,11 @@
 with base as (
     select
         f.usage_date,
-        coalesce(nullif(trim(m.department), ''), 'Unassigned') as department,
+        -- Keep Snowflake cloud-services overhead visible so department totals reconcile to top-line spend.
+        case
+            when upper(f.warehouse_name) = 'CLOUD_SERVICES_ONLY' then 'Overhead'
+            else coalesce(nullif(trim(m.department), ''), 'Unassigned')
+        end as department,
         f.warehouse_name,
         f.compute_cost as compute_cost_usd,
         f.idle_cost     as idle_cost_usd,
