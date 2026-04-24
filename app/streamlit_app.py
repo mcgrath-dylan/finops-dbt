@@ -22,6 +22,11 @@ except ModuleNotFoundError:
     from formatting import fmt_usd
 
 try:
+    from app.styles import STYLES
+except ModuleNotFoundError:
+    from styles import STYLES
+
+try:
     import plotly.express as px
     PLOTLY = True
 except Exception:
@@ -516,34 +521,7 @@ def load_pro_hourly_soft(
     return df
 
 # -------- styles ------------------------------------------------------------
-st.markdown(
-    """
-<style>
-/* hide Streamlit chrome */
-[data-testid="stToolbar"] { visibility: hidden; height: 0; }
-[data-testid="stDecoration"] { display: none; }
-
-/* badges and cards */
-.pill{display:inline-block;padding:6px 12px;border-radius:999px;font-weight:700;font-size:.85rem}
-.pill-demo{background:#2d3748;color:#e2e8f0;border:1px solid #4a5568}
-.pill-live{background:#234e52;color:#c6f6d5;border:1px solid #2c7a7b}
-
-.kpi{border:1px solid rgba(250,250,250,.08);background:rgba(255,255,255,.03);border-radius:8px;padding:14px 16px;min-height:104px}
-.kpi-title{font-size:.85rem;color:#c9d1d9;margin-bottom:4px}
-.kpi-value{font-size:1.4rem;font-weight:700}
-.kpi-value-success{color:#10b981}
-.kpi-value-danger{color:#e11d48}
-.kpi-value-neutral{color:#c9d1d9}
-.kpi-note{font-size:.875rem;color:#9aa4af;margin-top:6px;line-height:1.35}
-
-/* kill any lingering progress/skeleton bars inside KPI cards */
-.kpi [data-testid="stProgress"], .kpi div[role="progressbar"] { display:none !important; }
-.muted{color:#9aa4af}
-.section-help{float:right;opacity:.9}
-</style>
-""",
-    unsafe_allow_html=True,
-)
+st.markdown(STYLES, unsafe_allow_html=True)
 
 # -------- sidebar -----------------------------------------------------------
 with st.sidebar:
