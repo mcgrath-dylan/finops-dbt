@@ -27,7 +27,13 @@ except ModuleNotFoundError:
     from styles import STYLES
 
 try:
+    from app.components import apply_chart_theme, inline_stat_strip, kpi_hero, section_close, section_open
+except ModuleNotFoundError:
+    from components import apply_chart_theme, inline_stat_strip, kpi_hero, section_close, section_open
+
+try:
     import plotly.express as px
+    import plotly.graph_objects as go
     PLOTLY = True
 except Exception:
     PLOTLY = False
@@ -727,6 +733,16 @@ if PRO_PACK_FLAG and enable_pro and not pro_hourly.empty:
         except Exception:
             estimated_savings = None
 
+if PRO_PACK_FLAG:
+    if not enable_pro:
+        advanced_rightsizing_slot.caption("Right-Sizing (est.): enable Pro Insights to surface projected savings.")
+    elif warehouses_flagged is None and estimated_savings is None:
+        advanced_rightsizing_slot.caption("Right-Sizing (est.): projected savings unavailable for the current connection.")
+    else:
+        flagged_text = "—" if warehouses_flagged is None else f"{warehouses_flagged} flagged"
+        savings_text = "—" if estimated_savings is None else f"{fmt_usd(estimated_savings)}/month"
+        advanced_rightsizing_slot.caption(f"Right-Sizing (est.): {flagged_text} \u2022 {savings_text}")
+
 # -------- stale-data banner (live only) ------------------------------------
 if not demo_mode and freshness_hours is not None:
     if freshness_hours > 96:
@@ -749,24 +765,6 @@ def kpi(title: str, value: str, note: str = "", tone: str = ""):
         unsafe_allow_html=True,
     )
 
-row1 = st.columns(3 if PRO_PACK_FLAG else 2)
-with row1[0]:
-    kpi("Month-to-date Spend", fmt_usd(mtd_total), f"Through {today.strftime('%b %d')} of a {dim}-day month")
-with row1[1]:
-    kpi(forecast_title, fmt_usd(forecast_month), forecast_note, forecast_tone)
-if PRO_PACK_FLAG:
-    with row1[2]:
-        flagged_display = "—" if warehouses_flagged is None else f"{warehouses_flagged} flagged"
-        est_display = fmt_usd(estimated_savings) if estimated_savings is not None else "—"
-        credit_display = f"${CREDIT_PRICE:,.2f}"
-        if credit_display.endswith(".00"):
-            credit_display = credit_display[:-3]
-        if warehouses_flagged is None and estimated_savings is None:
-            caption = f"Connect Pro hourly heuristics to estimate right-sizing at {credit_display}/credit."
-        else:
-            caption = f"{est_display} estimated monthly savings at {credit_display}/credit."
-        kpi("Right-Sizing (est.)", flagged_display, caption)
-
 variance_value_disp = "—" if variance_value is None else fmt_usd(variance_value)
 variance_note = "Variance shown when budget exists"
 variance_tone = ""
@@ -786,63 +784,98 @@ elif variance_value is not None and variance_pct is not None:
 elif variance_value is not None:
     variance_note = "vs actual spend"
 
-row2 = st.columns(3)
-with row2[0]:
-    kpi(
-        f"Idle Wasted (last {days_shown} days)",
-        fmt_usd(idle_wasted_last_n) if idle_wasted_last_n is not None else "—",
-        "Compute-only idle cost over the last N days",
-    )
-with row2[1]:
-    kpi("Variance (MTD)", variance_value_disp, variance_note, variance_tone)
-with row2[2]:
-    kpi("Budget (MTD)", fmt_usd(budget_mtd), f"Sum through {today.strftime('%b %d')}")
+hero_end = today - dt.timedelta(days=1)
+hero_start = hero_end - dt.timedelta(days=29)
+hero_window = (
+    fct[(fct["usage_date"] >= hero_start) & (fct["usage_date"] <= hero_end)].copy()
+    if not fct.empty
+    else pd.DataFrame()
+)
+if not hero_window.empty and "total_cost" not in hero_window.columns and {"compute_cost", "idle_cost"} <= set(hero_window.columns):
+    hero_window["total_cost"] = hero_window["compute_cost"].fillna(0) + hero_window["idle_cost"].fillna(0)
 
-if PRO_PACK_FLAG:
-    row3 = st.columns(1)
-    with row3[0]:
-        kpi(
-            "Idle (projected, month)",
-            fmt_usd(total_idle_est) if total_idle_est is not None else "—",
-            (
-                "From Pro hourly model (scaled)"
-                if total_idle_est is not None
-                else ("Pro enabled, connect PRO_DATABASE/PRO_SCHEMA to activate" if enable_pro else "Turn on Pro insights to see this")
-            ),
-        )
+hero_has_idle = not hero_window.empty and "idle_cost" in hero_window.columns
+hero_idle_total = float(hero_window.get("idle_cost", pd.Series([0.0])).sum()) if hero_has_idle else 0.0
+hero_compute_total = float(hero_window.get("total_cost", pd.Series([0.0])).sum()) if not hero_window.empty else 0.0
+hero_idle_share = (hero_idle_total / hero_compute_total * 100.0) if hero_compute_total > 0 else None
+
+storage_mtd = storage_df[storage_df["usage_date"] >= first_day].copy() if not storage_df.empty else pd.DataFrame()
+storage_mtd_total = float(storage_mtd["estimated_storage_cost_usd"].sum()) if not storage_mtd.empty else 0.0
+
+variance_strip_value = "—"
+variance_strip_tone = ""
+if variance_value is not None and variance_pct is not None:
+    if variance_value > 0:
+        variance_strip_value = f"{variance_value_disp} ({abs(variance_pct):.0f}% over)"
+        variance_strip_tone = "danger"
+    elif variance_value < 0:
+        variance_strip_value = f"{variance_value_disp} ({abs(variance_pct):.0f}% under)"
+        variance_strip_tone = "success"
+    else:
+        variance_strip_value = "On budget"
+elif variance_value is not None:
+    variance_strip_value = variance_value_disp
+
+hero_support = "Compute spend unavailable for the last 30 days"
+if hero_idle_share is not None:
+    hero_support = f"{hero_idle_share:.0f}% of compute spend over the last 30 days"
 
 if not demo_mode and mtd_total <= 0:
     st.info("No live compute spend found in the current month. Check ACCOUNT_USAGE lag, warehouse mapping, and whether the workload warehouse has metering history.")
 
-st.divider()
-
-# -------- Total Cost Breakdown (v3.0.0) ------------------------------------
-if not total_cost_df.empty and "cost_category" in total_cost_df.columns:
-    st.markdown(
-        f'### Total Cost Breakdown (MTD) <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
-        unsafe_allow_html=True,
+hero_cols = st.columns([3, 2], gap="large")
+with hero_cols[0]:
+    kpi_hero(
+        "Idle Wasted",
+        fmt_usd(hero_idle_total) if hero_has_idle else "—",
+        hero_support,
+        "Warehouses running without queries — reclaimable with auto-suspend tuning",
     )
-    mtd_summary = total_cost_df.groupby("cost_category", as_index=False)["cost_usd"].sum()
-    total_all = float(mtd_summary["cost_usd"].sum())
-    if total_all > 0:
-        mtd_summary["pct"] = (mtd_summary["cost_usd"] / total_all * 100.0).round(1)
-        left_tc, right_tc = st.columns([1, 1])
-        with left_tc:
-            if PLOTLY:
-                fig_tc = px.pie(mtd_summary, values="cost_usd", names="cost_category",
-                                hole=0.4, color_discrete_sequence=px.colors.qualitative.Set2)
-                fig_tc.update_layout(height=280, margin=dict(l=10, r=10, t=10, b=10))
-                fig_tc.update_traces(textinfo="label+percent", hovertemplate="%{label}: $%{value:,.0f}")
-                st.plotly_chart(fig_tc, use_container_width=True)
-            else:
-                st.dataframe(mtd_summary, hide_index=True)
-        with right_tc:
-            kpi(
-                "Total Snowflake Spend (MTD)",
-                fmt_usd(total_all),
-                f"{len(mtd_summary)} cost categories through {today.strftime('%b %d')}",
+with hero_cols[1]:
+    donut_section = section_open("Compute vs. Storage")
+    with donut_section:
+        donut_total = mtd_total + storage_mtd_total
+        if PLOTLY and donut_total > 0:
+            fig_tc = go.Figure(
+                data=[
+                    go.Pie(
+                        labels=["Compute", "Storage"],
+                        values=[mtd_total, storage_mtd_total],
+                        hole=0.62,
+                        sort=False,
+                        direction="clockwise",
+                        marker=dict(
+                            colors=["#2dd4bf", "rgba(255,255,255,0.12)"],
+                            line=dict(color="#0e1117", width=2),
+                        ),
+                        textinfo="none",
+                        hovertemplate="%{label}: $%{value:,.0f}<extra></extra>",
+                        showlegend=False,
+                    )
+                ]
             )
-    st.divider()
+            apply_chart_theme(fig_tc)
+            fig_tc.update_layout(height=292, showlegend=False)
+            st.plotly_chart(fig_tc, use_container_width=True, config={"displayModeBar": False})
+        else:
+            st.markdown(
+                '<div class="spendscope-empty">No compute or storage spend is available for the current month.</div>',
+                unsafe_allow_html=True,
+            )
+    section_close()
+
+inline_stat_strip(
+    [
+        {"title": "MTD", "value": fmt_usd(mtd_total)},
+        {"title": "Forecast", "value": fmt_usd(forecast_month)},
+        {"title": "Variance", "value": variance_strip_value, "tone": variance_strip_tone},
+    ]
+)
+st.markdown(
+    f'<div class="spendscope-context">Month-to-date figures are compute only. Lower sections reflect the selected {days_shown}-day window.</div>',
+    unsafe_allow_html=True,
+)
+st.markdown('<div class="spendscope-gap"></div>', unsafe_allow_html=True)
 
 # -------- Cost Forecast Chart (v3.0.0) -------------------------------------
 if not forecast_df.empty and "forecast_date" in forecast_df.columns and PLOTLY:
