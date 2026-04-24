@@ -27,12 +27,11 @@ except ModuleNotFoundError:
     from styles import STYLES
 
 try:
-    from app.components import apply_chart_theme, inline_stat_strip, kpi_hero, section_close, section_open
+    from app.components import apply_chart_theme, inline_stat_strip, kpi_hero, ranked_list, section_close, section_open
 except ModuleNotFoundError:
-    from components import apply_chart_theme, inline_stat_strip, kpi_hero, section_close, section_open
+    from components import apply_chart_theme, inline_stat_strip, kpi_hero, ranked_list, section_close, section_open
 
 try:
-    import plotly.express as px
     import plotly.graph_objects as go
     PLOTLY = True
 except Exception:
@@ -50,15 +49,7 @@ def env_bool(name: str, default: bool = False) -> bool:
         return default
     return str(v).strip().lower() in {"1", "true", "yes", "on"}
 
-def env_float(name: str, default: float) -> float:
-    v = os.getenv(name)
-    try:
-        return float(v) if v is not None and v != "" else float(default)
-    except Exception:
-        return float(default)
-
 DEV_MODE = env_bool("DEV_MODE", False)
-CREDIT_PRICE = env_float("CREDIT_PRICE_USD", 3.0)
 
 st.set_page_config(
     page_title="Spendscope \u2014 Snowflake spend optimization with dbt",
@@ -66,8 +57,6 @@ st.set_page_config(
     menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
 
-DOCS_URL = os.getenv("FINOPS_DOCS_URL", "https://mcgrath-dylan.github.io/finops-dbt/")
-REPO_URL = os.getenv("FINOPS_REPO_URL", "https://github.com/mcgrath-dylan/finops-dbt")
 PRO_DATABASE = (os.getenv("PRO_DATABASE") or "").strip()
 PRO_SCHEMA = (os.getenv("PRO_SCHEMA") or "").strip()
 PRO_PACK_FLAG = env_bool("ENABLE_PRO_PACK", False)
@@ -118,13 +107,6 @@ def clear_all_caches():
                     pass
     except Exception:
         pass
-
-def humanize_header(key_col: str) -> str:
-    return (
-        "Warehouse"
-        if key_col == "warehouse_name"
-        else ("Department" if key_col == "department" else key_col.replace("_", " ").title())
-    )
 
 # -------- Snowflake ---------------------------------------------------------
 @st.cache_data(show_spinner=False)
@@ -615,27 +597,14 @@ forecast_month_inline = (mtd_total / max(elapsed, 1)) * dim if mtd_total > 0 els
 forecast_month_inline = max(forecast_month_inline, mtd_total)
 
 # Use the dbt forecast model when available; fall back to inline run-rate
-forecast_title = "Run-rate estimate"
-forecast_note = "Forecast model needs 7+ days of warehouse history"
-forecast_tone = "neutral"
 if not forecast_df.empty and "forecasted_cost_usd" in forecast_df.columns:
     remaining_forecast = float(forecast_df.loc[
         forecast_df["forecast_date"] <= dt.date(today.year, today.month, dim_count(today)),
         "forecasted_cost_usd"
     ].sum())
     forecast_month = mtd_total + remaining_forecast
-    forecast_title = "Forecast"
-    forecast_note = "Rolling avg + trend model"
-    forecast_tone = ""
 else:
     forecast_month = forecast_month_inline
-
-# Idle wasted (last N days) from Starter
-if not fct.empty and "idle_cost" in fct.columns:
-    start_win = today - dt.timedelta(days=days_shown - 1)
-    idle_wasted_last_n = float(fct[(fct["usage_date"] >= start_win) & (fct["usage_date"] < today)]["idle_cost"].sum())
-else:
-    idle_wasted_last_n = None
 
 budget_mtd = None
 if not budget.empty and "date" in budget.columns:
@@ -1131,179 +1100,166 @@ def compute_budget_delta_window(days: int) -> pd.DataFrame:
 
 budget_win = compute_budget_delta_window(days_shown)
 
-def render_top_table(title: str, df: pd.DataFrame, key_col: str, value_col: str, add_budget=False):
-    st.markdown(
-        f'### {title} <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
-        unsafe_allow_html=True,
-    )
-    st.caption(f"Spend over the last {days_shown} days")
+window_end = today - dt.timedelta(days=1)
+window_start = window_end - dt.timedelta(days=days_shown - 1)
+
+
+def build_ranked_rows(df: pd.DataFrame, key_col: str, value_col: str, *, add_budget: bool = False):
     if df.empty:
-        st.info("No rows in current window.")
-        return
+        return []
 
-    g = df.groupby(key_col, as_index=False)[value_col].sum().rename(columns={key_col: humanize_header(key_col), value_col: "Window_value"})
-    total = float(g["Window_value"].sum())
-    g = g.sort_values("Window_value", ascending=False).head(rows_to_show).reset_index(drop=True)
+    grouped = (
+        df.groupby(key_col, as_index=False)[value_col]
+        .sum()
+        .rename(columns={key_col: "name", value_col: "value"})
+        .sort_values("value", ascending=False)
+        .head(rows_to_show)
+        .reset_index(drop=True)
+    )
+    total_value = float(grouped["value"].sum())
+    grouped["share"] = np.where(total_value > 0, grouped["value"] / total_value * 100.0, 0.0)
+    grouped["delta_pct"] = np.nan
 
-    if add_budget and not budget_win.empty and key_col == "department":
-        tmp = budget_win.rename(columns={"department": humanize_header(key_col)})
-        g = g.merge(tmp, on=humanize_header(key_col), how="left")
-        g["vs budget"] = g.apply(
-            lambda r: ("—" if pd.isna(r.get("budget_window_usd")) else (f"{((r['Window_value']-r['budget_window_usd'])/r['budget_window_usd']*100):+.0f}%")),
-            axis=1,
-        )
-    else:
-        g["vs budget"] = None
-
-    g["Spend (last N days)"] = g["Window_value"].apply(lambda x: fmt_usd(float(x)))
-    display_cols = [humanize_header(key_col), "Spend (last N days)"]
-    if add_budget and key_col == "department":
-        display_cols.append("vs budget")
-
-    if total > 0:
-        g["Share"] = (g["Window_value"] / total * 100.0).round(0)
-        display_cols.append("Share")
-        st.dataframe(
-            g[display_cols],
-            hide_index=True,
-            width="stretch",
-            column_config={
-                humanize_header(key_col): st.column_config.TextColumn(width="medium"),
-                "Spend (last N days)": st.column_config.TextColumn(width="medium"),
-                "vs budget": st.column_config.TextColumn(width="small"),
-                "Share": st.column_config.NumberColumn(format="%.0f%%", width="small"),
-            },
-        )
-    else:
-        st.dataframe(
-            g[display_cols],
-            hide_index=True,
-            width="stretch",
-            column_config={
-                humanize_header(key_col): st.column_config.TextColumn(width="medium"),
-                "Spend (last N days)": st.column_config.TextColumn(width="medium"),
-                "vs budget": st.column_config.TextColumn(width="small"),
-            },
+    if add_budget and not budget_win.empty:
+        grouped = grouped.merge(budget_win.rename(columns={"department": "name"}), on="name", how="left")
+        grouped["delta_pct"] = np.where(
+            grouped["budget_window_usd"] > 0,
+            (grouped["value"] - grouped["budget_window_usd"]) / grouped["budget_window_usd"] * 100.0,
+            np.nan,
         )
 
-L, R = st.columns(2)
+    rows = []
+    for _, row in grouped.iterrows():
+        delta_pct = None if pd.isna(row.get("delta_pct")) else float(row["delta_pct"])
+        rows.append(
+            {
+                "name": str(row["name"]),
+                "value": float(row["value"]),
+                "display_value": fmt_usd(float(row["value"])),
+                "share": float(row["share"]),
+                "delta_pct": delta_pct,
+            }
+        )
+    return rows
+
+
+department_window = dept[(dept["usage_date"] >= window_start) & (dept["usage_date"] <= window_end)] if not dept.empty else pd.DataFrame()
+warehouse_window = fct[(fct["usage_date"] >= window_start) & (fct["usage_date"] <= window_end)] if not fct.empty else pd.DataFrame()
+
+department_rows = build_ranked_rows(department_window, "department", "total_cost_usd", add_budget=True)
+warehouse_rows = build_ranked_rows(warehouse_window, "warehouse_name", "total_cost")
+
+L, R = st.columns([1, 1], gap="large")
 with L:
-    render_top_table(
-        "Top Departments",
-        dept[(dept["usage_date"] >= today - dt.timedelta(days=days_shown - 1)) & (dept["usage_date"] < today)] if not dept.empty else pd.DataFrame(),
-        "department",
-        "total_cost_usd",
-        add_budget=True,
-    )
+    department_section = section_open("Top Departments")
+    with department_section:
+        ranked_list(department_rows, with_delta=True)
+    section_close()
 with R:
-    render_top_table(
-        "Top Warehouses",
-        fct[(fct["usage_date"] >= today - dt.timedelta(days=days_shown - 1)) & (fct["usage_date"] < today)] if not fct.empty else pd.DataFrame(),
-        "warehouse_name",
-        "total_cost",
-        add_budget=False,
-    )
+    warehouse_section = section_open("Top Warehouses")
+    with warehouse_section:
+        ranked_list(warehouse_rows, with_delta=False)
+    section_close()
+
+st.markdown('<div class="spendscope-gap"></div>', unsafe_allow_html=True)
 
 # -------- Pro section -------------------------------------------------------
 show_for_export = pd.DataFrame()
 if PRO_PACK_FLAG:
-    st.divider()
-    st.markdown(
-        f'### Pro Insights <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
-        unsafe_allow_html=True,
-    )
-    with st.expander("How these numbers are computed?", expanded=False):
-        st.markdown(
-            f"""
+    pro_section = section_open("Pro Insights")
+    with pro_section:
+        with st.expander("How these numbers are computed?", expanded=False):
+            st.markdown(
+                f"""
 - **Source of truth:** `ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY` (Compute + Cloud Services).
 - **Forecast (month):** prorates month-to-date run rate to a 30-day month.
 - **Idle wasted (last {days_shown}):** sum of hourly idle cost over the last **{days_shown}** days.
 - **Idle projected (monthly, Pro):** month-to-date hourly idle scaled to 30 days.
 - **Notes:** per-warehouse/attribution figures are estimates; authoritative spend comes from metering history.
-            """
-        )
-
-    if enable_pro:
-        if pro_hourly.empty:
-            st.info("Pro enabled, but no Pro datasets found. Set PRO_DATABASE/PRO_SCHEMA to activate.")
-        else:
-            pdf = pro_hourly.copy()
-            pdf["Idle $/mo (est.)"] = (pdf["idle_cost_adj"] / max(days_shown, 1) * 30.0).astype(float)
-            pdf["Idle share (%)"] = (
-                100.0 * (pdf["idle_cost_adj"] / pdf["total_cost"].replace(0, np.nan))
-            ).clip(0, 100).fillna(0.0).round(0)
-            if not rightsizing_df.empty:
-                pdf = pdf.merge(rightsizing_df, on="warehouse_name", how="left")
-            show = (
-                pdf[["warehouse_name", "Idle $/mo (est.)", "Idle share (%)"]]
-                .rename(columns={"warehouse_name": "Warehouse"})
-                .sort_values("Idle $/mo (est.)", ascending=False)
-                .head(rows_to_show)
-            )
-            st.dataframe(
-                show.assign(**{"Idle $/mo (display)": show["Idle $/mo (est.)"].apply(lambda v: fmt_usd(float(v)))})[
-                    ["Warehouse", "Idle $/mo (display)", "Idle share (%)"]
-                ],
-                hide_index=True,
-                width="stretch",
-                column_config={
-                    "Warehouse": st.column_config.TextColumn(width="medium"),
-                    "Idle $/mo (display)": st.column_config.TextColumn(width="medium"),
-                    "Idle share (%)": st.column_config.NumberColumn(format="%.0f%%", width="small"),
-                },
-            )
-            show_for_export = (
-                pdf.rename(columns={"warehouse_name": "name"})[
-                    ["name", "Idle $/mo (est.)", "Idle share (%)", "rightsize_suggestion"]
-                ]
-                .sort_values("Idle $/mo (est.)", ascending=False)
+                """
             )
 
-            current = load_current_warehouses()
-            sql_lines, notes = [], []
-            for _, r in show.iterrows():
-                wh = str(r["Warehouse"]).upper()
-                rec = None
-                try:
-                    rec = rightsizing_df.loc[
-                        rightsizing_df["warehouse_name"].str.upper() == wh, "rightsize_suggestion"
-                    ].iloc[0]
-                except Exception:
+        if enable_pro:
+            if pro_hourly.empty:
+                st.info("Pro enabled, but no Pro datasets found. Set PRO_DATABASE/PRO_SCHEMA to activate.")
+            else:
+                pdf = pro_hourly.copy()
+                pdf["Idle $/mo (est.)"] = (pdf["idle_cost_adj"] / max(days_shown, 1) * 30.0).astype(float)
+                pdf["Idle share (%)"] = (
+                    100.0 * (pdf["idle_cost_adj"] / pdf["total_cost"].replace(0, np.nan))
+                ).clip(0, 100).fillna(0.0).round(0)
+                if not rightsizing_df.empty:
+                    pdf = pdf.merge(rightsizing_df, on="warehouse_name", how="left")
+                show = (
+                    pdf[["warehouse_name", "Idle $/mo (est.)", "Idle share (%)"]]
+                    .rename(columns={"warehouse_name": "Warehouse"})
+                    .sort_values("Idle $/mo (est.)", ascending=False)
+                    .head(rows_to_show)
+                )
+                st.dataframe(
+                    show.assign(**{"Idle $/mo (display)": show["Idle $/mo (est.)"].apply(lambda v: fmt_usd(float(v)))})[
+                        ["Warehouse", "Idle $/mo (display)", "Idle share (%)"]
+                    ],
+                    hide_index=True,
+                    width="stretch",
+                    column_config={
+                        "Warehouse": st.column_config.TextColumn(width="medium"),
+                        "Idle $/mo (display)": st.column_config.TextColumn(width="medium"),
+                        "Idle share (%)": st.column_config.NumberColumn(format="%.0f%%", width="small"),
+                    },
+                )
+                show_for_export = (
+                    pdf.rename(columns={"warehouse_name": "name"})[
+                        ["name", "Idle $/mo (est.)", "Idle share (%)", "rightsize_suggestion"]
+                    ]
+                    .sort_values("Idle $/mo (est.)", ascending=False)
+                )
+
+                current = load_current_warehouses()
+                sql_lines, notes = [], []
+                for _, r in show.iterrows():
+                    wh = str(r["Warehouse"]).upper()
                     rec = None
-                if rec:
-                    notes.append(f"**{wh}** — {rec}. Change size in Snowsight or via Terraform/IaC policy.")
-                    continue
-                idle_share = float(show.loc[show["Warehouse"] == r["Warehouse"], "Idle share (%)"].iloc[0])
-                mins = 5 if idle_share >= 40 else 10
-                target_sec = mins * 60
-                cur_meta = current.get(wh, {})
-                current_sec = cur_meta.get("auto_suspend")
-                if current_sec != target_sec:
-                    current_disp = (
-                        f"{int(current_sec/60)} min"
-                        if current_sec and current_sec >= 60
-                        else (f"{current_sec} sec" if current_sec else "—")
-                    )
-                    notes.append(f"**{wh}** — Current: {current_disp} → Target: {mins} min")
-                    sql_lines.append(f"ALTER WAREHOUSE {wh} SET AUTO_SUSPEND = {target_sec};")
-
-            if sql_lines or notes:
-                show_actions = st.toggle("Show change-set actions", False, help="Only shows changes when target differs from current setting")
-                if show_actions:
-                    for n in notes:
-                        st.write(n)
-                    if sql_lines:
-                        st.code("\n".join(sql_lines), language="sql")
-                        st.download_button(
-                            "Download autosuspend SQL",
-                            "\n".join(sql_lines).encode("utf-8"),
-                            file_name="autosuspend_changes.sql",
-                            mime="text/plain",
+                    try:
+                        rec = rightsizing_df.loc[
+                            rightsizing_df["warehouse_name"].str.upper() == wh, "rightsize_suggestion"
+                        ].iloc[0]
+                    except Exception:
+                        rec = None
+                    if rec:
+                        notes.append(f"**{wh}** — {rec}. Change size in Snowsight or via Terraform/IaC policy.")
+                        continue
+                    idle_share = float(show.loc[show["Warehouse"] == r["Warehouse"], "Idle share (%)"].iloc[0])
+                    mins = 5 if idle_share >= 40 else 10
+                    target_sec = mins * 60
+                    cur_meta = current.get(wh, {})
+                    current_sec = cur_meta.get("auto_suspend")
+                    if current_sec != target_sec:
+                        current_disp = (
+                            f"{int(current_sec/60)} min"
+                            if current_sec and current_sec >= 60
+                            else (f"{current_sec} sec" if current_sec else "—")
                         )
-    else:
-        st.info("Toggle Pro Insights in the sidebar to surface projected idle and opportunity tiles.")
+                        notes.append(f"**{wh}** — Current: {current_disp} → Target: {mins} min")
+                        sql_lines.append(f"ALTER WAREHOUSE {wh} SET AUTO_SUSPEND = {target_sec};")
 
-st.divider()
+                if sql_lines or notes:
+                    show_actions = st.toggle("Show change-set actions", False, help="Only shows changes when target differs from current setting")
+                    if show_actions:
+                        for n in notes:
+                            st.write(n)
+                        if sql_lines:
+                            st.code("\n".join(sql_lines), language="sql")
+                            st.download_button(
+                                "Download autosuspend SQL",
+                                "\n".join(sql_lines).encode("utf-8"),
+                                file_name="autosuspend_changes.sql",
+                                mime="text/plain",
+                            )
+        else:
+            st.info("Toggle Pro Insights in the sidebar to surface projected idle and opportunity tiles.")
+    section_close()
+    st.markdown('<div class="spendscope-gap"></div>', unsafe_allow_html=True)
 
 # -------- Insights CSV ------------------------------------------------------
 def build_insights_csv() -> pd.DataFrame:
@@ -1377,12 +1333,6 @@ def build_insights_csv() -> pd.DataFrame:
 
 budget_win = compute_budget_delta_window(days_shown)
 insights_df = build_insights_csv()
-if not insights_df.empty:
-    st.download_button("Download insights CSV", data=insights_df.to_csv(index=False).encode("utf-8"), file_name="finops_insights.csv", mime="text/csv")
-
-st.divider()
-
-# -------- Diagnostics -------------------
 diag_rows = []
 def diag_entry(name: str, df: Optional[pd.DataFrame], date_col: Optional[str] = None, explicit_date: Optional[dt.date] = None) -> Dict[str, str]:
     status = "✗"
@@ -1412,17 +1362,28 @@ diag_rows.append(diag_entry("fct_total_cost_summary", total_cost_df, "usage_date
 diag_rows.append(diag_entry("fct_top_spenders", top_spenders_df, "usage_date"))
 diag_df = pd.DataFrame(diag_rows)
 
-with st.expander("Diagnostics", expanded=DEV_MODE):
-    st.dataframe(
-        diag_df,
-        hide_index=True,
-        width="stretch",
-        column_config={
-            "Table": st.column_config.TextColumn(width="medium"),
-            "Status": st.column_config.TextColumn(width="small"),
-            "Latest usage_date": st.column_config.TextColumn(width="medium"),
-        },
-    )
+exports_section = section_open("Exports & Diagnostics")
+with exports_section:
+    if not insights_df.empty:
+        st.download_button(
+            "Download insights CSV",
+            data=insights_df.to_csv(index=False).encode("utf-8"),
+            file_name="finops_insights.csv",
+            mime="text/csv",
+        )
+
+    with st.expander("Diagnostics", expanded=DEV_MODE):
+        st.dataframe(
+            diag_df,
+            hide_index=True,
+            width="stretch",
+            column_config={
+                "Table": st.column_config.TextColumn(width="medium"),
+                "Status": st.column_config.TextColumn(width="small"),
+                "Latest usage_date": st.column_config.TextColumn(width="medium"),
+            },
+        )
+section_close()
 
 # -------- Freshness (sidebar microcopy) ------------------------------------
 if demo_mode:
