@@ -55,7 +55,7 @@ DEV_MODE = env_bool("DEV_MODE", False)
 CREDIT_PRICE = env_float("CREDIT_PRICE_USD", 3.0)
 
 st.set_page_config(
-    page_title="FinOps Starter – Cost Overview",
+    page_title="Spendscope \u2014 Snowflake spend optimization with dbt",
     layout="wide",
     menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
@@ -524,48 +524,68 @@ def load_pro_hourly_soft(
 st.markdown(STYLES, unsafe_allow_html=True)
 
 # -------- sidebar -----------------------------------------------------------
+WINDOW_PRESETS = [7, 14, 30, 60, 90]
+
 with st.sidebar:
-    st.subheader("Environment")
-    demo_mode = st.toggle("Demo Mode", True)
+    current_demo_mode = bool(st.session_state.get("ui_demo_mode", True))
+    mode_pill = "mode-pill-demo" if current_demo_mode else "mode-pill-live"
+    mode_label = "DEMO" if current_demo_mode else "LIVE"
+    st.markdown(
+        (
+            '<div class="spendscope-brand">'
+            '<div class="spendscope-brand-row">'
+            '<div class="spendscope-brand-name">Spendscope</div>'
+            f'<span class="mode-pill {mode_pill}">{mode_label}</span>'
+            "</div>"
+            '<div class="spendscope-brand-subtitle">Snowflake spend optimization with dbt</div>'
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+    demo_mode = st.toggle("Demo data", current_demo_mode, key="ui_demo_mode")
     if "last_demo" not in st.session_state:
         st.session_state.last_demo = demo_mode
     if st.session_state.last_demo != demo_mode:
         clear_all_caches()
         st.session_state.last_demo = demo_mode
 
+    window_default = int(st.session_state.get("ui_days_shown", 30))
+    if window_default not in WINDOW_PRESETS:
+        window_default = 30
+    days_shown = int(
+        st.selectbox(
+            "Time window",
+            options=WINDOW_PRESETS,
+            index=WINDOW_PRESETS.index(window_default),
+            format_func=lambda days: f"{days} days",
+            key="ui_days_shown",
+        )
+    )
+
     cp = get_conn_params()
-    st.caption(
-        f"**Context:** `{cp.get('database','—')}`.`{active_schema(demo_mode)}` • "
-        f"**Role:** `{cp.get('role','—')}` • **Warehouse:** `{cp.get('warehouse','—')}`"
-    )
+    advanced = st.expander("Advanced", expanded=False)
+    with advanced:
+        st.caption(
+            f"Context: `{cp.get('database', '-')}`.`{active_schema(demo_mode)}` \u2022 "
+            f"Role: `{cp.get('role', '-')}` \u2022 Warehouse: `{cp.get('warehouse', '-')}`"
+        )
+        if not PRO_PACK_FLAG:
+            st.caption("FinOps Pro add-on required before projected idle and right-sizing insights can be enabled.")
+        rows_to_show = st.slider("Show up to N rows", 3, 15, 8, 1)
+        if st.button("Clear app cache"):
+            clear_all_caches()
+            st.success("Caches cleared.")
+        advanced_freshness_slot = st.empty()
+        advanced_last_build_slot = st.empty()
+        if PRO_PACK_FLAG:
+            enable_pro = st.toggle("Pro Insights", True)
+        else:
+            enable_pro = False
+        advanced_rightsizing_slot = st.empty()
 
-    st.subheader("Controls")
-    days_shown = st.slider("Days shown", 7, 90, 30, 1)
-    rows_to_show = st.slider("Show up to N rows", 3, 15, 8, 1)
-
-    if PRO_PACK_FLAG:
-        enable_pro = st.toggle("Pro Insights", True)
-    else:
-        enable_pro = False
-        st.caption("FinOps Pro add-on required; set `ENABLE_PRO_PACK=true` only after installing the licensed package.")
-
-    st.caption("Controls affect tiles, charts, and tables.")
-    if st.button("Clear app cache"):
-        clear_all_caches()
-        st.success("Caches cleared.")
-
-# -------- header ------------------------------------------------------------
-left, right = st.columns([2, 1])
-with left:
-    st.markdown("## FinOps for Snowflake + dbt")
-    pill = '<span class="pill pill-demo">DEMO</span>' if demo_mode else '<span class="pill pill-live">LIVE</span>'
-    st.markdown(pill, unsafe_allow_html=True)
-with right:
-    st.markdown(
-        f'<div style="text-align:right"><a href="{DOCS_URL}" target="_blank">Docs &amp; lineage</a> &nbsp;•&nbsp; '
-        f'<a href="{REPO_URL}" target="_blank">Repo</a></div>',
-        unsafe_allow_html=True,
-    )
+    if demo_mode:
+        st.caption("Demo data \u2022 not a real Snowflake account")
 
 # -------- data & metrics ----------------------------------------------------
 fct, dept, fresh = load_models(demo_mode, days_shown)
@@ -1278,20 +1298,30 @@ with st.expander("Diagnostics", expanded=DEV_MODE):
     )
 
 # -------- Freshness (sidebar microcopy) ------------------------------------
-with st.sidebar:
-    if demo_mode:
-        st.caption("**Freshness:** Not available in demo")
-        st.caption("**Last build:** Not available in demo")
-    elif not fresh.empty and "last_end_time" in fresh.columns and pd.notnull(fresh.iloc[0]["last_end_time"]):
+if demo_mode:
+    advanced_freshness_slot.caption("Freshness: Not available in demo")
+    advanced_last_build_slot.caption("Last build: Not available in demo")
+elif not fresh.empty and "last_end_time" in fresh.columns and pd.notnull(fresh.iloc[0]["last_end_time"]):
+    try:
+        last = pd.to_datetime(fresh.iloc[0]["last_end_time"])
+        if last.tzinfo is None:
+            last = last.tz_localize("UTC")
+        now = pd.Timestamp.utcnow().tz_localize("UTC")
+        age = (now - last).total_seconds() / 3600.0
+        advanced_freshness_slot.caption(f"Freshness: {age:.1f}h ago")
+    except Exception:
+        advanced_freshness_slot.caption("Freshness: -")
+
+    latest_build = None
+    if not fct.empty and "usage_date" in fct.columns:
         try:
-            last = pd.to_datetime(fresh.iloc[0]["last_end_time"])
-            if last.tzinfo is None:
-                last = last.tz_localize("UTC")
-            now = pd.Timestamp.utcnow().tz_localize("UTC")
-            age = (now - last).total_seconds() / 3600.0
-            st.caption(f"**Freshness:** {age:.1f}h ago")
+            latest_build = pd.to_datetime(fct["usage_date"], errors="coerce").dropna().max()
         except Exception:
-            st.caption("**Freshness:** —")
+            latest_build = None
+    if latest_build is not None and pd.notnull(latest_build):
+        advanced_last_build_slot.caption(f"Last build: {latest_build.date().isoformat()}")
     else:
-        st.caption("**Freshness:** —")
-        st.caption("**Last build:** —")
+        advanced_last_build_slot.caption("Last build: -")
+else:
+    advanced_freshness_slot.caption("Freshness: -")
+    advanced_last_build_slot.caption("Last build: -")
