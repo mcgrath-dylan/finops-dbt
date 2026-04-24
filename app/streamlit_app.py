@@ -879,151 +879,245 @@ st.markdown('<div class="spendscope-gap"></div>', unsafe_allow_html=True)
 
 # -------- Cost Forecast Chart (v3.0.0) -------------------------------------
 if not forecast_df.empty and "forecast_date" in forecast_df.columns and PLOTLY:
-    st.markdown(
-        f'### Cost Forecast <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
-        unsafe_allow_html=True,
-    )
-    # Aggregate across warehouses for the chart
-    fc_agg = forecast_df.groupby("forecast_date", as_index=False).agg(
-        forecasted=("forecasted_cost_usd", "sum"),
-        low=("confidence_band_low", "sum"),
-        high=("confidence_band_high", "sum"),
-    )
-    # Actuals for the last 30 days
-    act_window = fct[fct["usage_date"] >= today - dt.timedelta(days=30)].copy() if not fct.empty else pd.DataFrame()
-    if not act_window.empty:
-        act_agg = act_window.groupby("usage_date", as_index=False)["total_cost"].sum()
-    else:
-        act_agg = pd.DataFrame(columns=["usage_date", "total_cost"])
+    forecast_section = section_open("Cost Forecast")
+    with forecast_section:
+        fc_agg = forecast_df.groupby("forecast_date", as_index=False).agg(
+            forecasted=("forecasted_cost_usd", "sum"),
+            low=("confidence_band_low", "sum"),
+            high=("confidence_band_high", "sum"),
+        )
+        act_window = fct[fct["usage_date"] >= today - dt.timedelta(days=30)].copy() if not fct.empty else pd.DataFrame()
+        if not act_window.empty:
+            act_agg = act_window.groupby("usage_date", as_index=False)["total_cost"].sum()
+        else:
+            act_agg = pd.DataFrame(columns=["usage_date", "total_cost"])
 
-    import plotly.graph_objects as go
-    fig_fc = go.Figure()
-    if not act_agg.empty:
-        fig_fc.add_trace(go.Scatter(x=act_agg["usage_date"], y=act_agg["total_cost"],
-                                     mode="lines+markers", name="Actual", line=dict(width=2)))
-    fig_fc.add_trace(go.Scatter(x=fc_agg["forecast_date"], y=fc_agg["high"],
-                                 mode="lines", name="Upper band", line=dict(width=0), showlegend=False))
-    fig_fc.add_trace(go.Scatter(x=fc_agg["forecast_date"], y=fc_agg["low"],
-                                 mode="lines", name="Confidence band", fill="tonexty",
-                                 fillcolor="rgba(100,150,255,0.15)", line=dict(width=0)))
-    fig_fc.add_trace(go.Scatter(x=fc_agg["forecast_date"], y=fc_agg["forecasted"],
-                                 mode="lines", name="Forecast", line=dict(dash="dash", width=2)))
-    fig_fc.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified",
-                          legend=dict(orientation="h", yanchor="bottom", y=1.02))
-    fig_fc.update_yaxes(tickprefix="$", separatethousands=True, title="")
-    fig_fc.update_xaxes(title="")
-    st.plotly_chart(fig_fc, use_container_width=True)
-    st.caption("Forecast uses rolling average + linear trend with day-of-week seasonality. Shaded band shows 1 stddev confidence interval.")
-    st.divider()
+        fig_fc = go.Figure()
+        if not act_agg.empty:
+            fig_fc.add_trace(
+                go.Scatter(
+                    x=act_agg["usage_date"],
+                    y=act_agg["total_cost"],
+                    mode="lines+markers",
+                    name="Actual",
+                    line=dict(color="#c9d1d9", width=2),
+                    marker=dict(size=5, color="#c9d1d9"),
+                    hovertemplate="Actual: $%{y:,.0f} on %{x|%b %d}<extra></extra>",
+                )
+            )
+        fig_fc.add_trace(
+            go.Scatter(
+                x=fc_agg["forecast_date"],
+                y=fc_agg["high"],
+                mode="lines",
+                line=dict(width=0),
+                showlegend=False,
+                hoverinfo="skip",
+            )
+        )
+        fig_fc.add_trace(
+            go.Scatter(
+                x=fc_agg["forecast_date"],
+                y=fc_agg["low"],
+                mode="lines",
+                name="Confidence band",
+                fill="tonexty",
+                fillcolor="rgba(45,212,191,0.10)",
+                line=dict(width=0),
+                hovertemplate="Band: $%{y:,.0f} on %{x|%b %d}<extra></extra>",
+            )
+        )
+        fig_fc.add_trace(
+            go.Scatter(
+                x=fc_agg["forecast_date"],
+                y=fc_agg["forecasted"],
+                mode="lines",
+                name="Forecast",
+                line=dict(color="#2dd4bf", dash="dash", width=2),
+                hovertemplate="Forecast: $%{y:,.0f} on %{x|%b %d}<extra></extra>",
+            )
+        )
+        apply_chart_theme(fig_fc)
+        fig_fc.update_layout(
+            height=360,
+            hovermode="x unified",
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+        )
+        fig_fc.update_yaxes(tickprefix="$", separatethousands=True)
+        st.plotly_chart(fig_fc, use_container_width=True, config={"displayModeBar": False})
+        st.caption("Forecast uses rolling average + linear trend with day-of-week seasonality. Shaded band shows 1 stddev confidence interval.")
+    section_close()
+    st.markdown('<div class="spendscope-gap"></div>', unsafe_allow_html=True)
 
 # -------- Storage Costs (v3.0.0) -------------------------------------------
 if not storage_df.empty and "estimated_storage_cost_usd" in storage_df.columns:
-    st.markdown(
-        f'### Storage Costs <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
-        unsafe_allow_html=True,
-    )
-    stor_mtd = storage_df[storage_df["usage_date"] >= first_day]
-    storage_mtd_total = float(stor_mtd["estimated_storage_cost_usd"].sum()) if not stor_mtd.empty else 0.0
-    storage_window_total = float(storage_df["estimated_storage_cost_usd"].sum())
-    left_s, right_s = st.columns([2, 1])
-    with left_s:
-        if storage_window_total <= 0:
-            st.info("No nonzero storage cost found in the selected window. Small fresh accounts can legitimately round to $0 at the current TB/month rate.")
-        elif PLOTLY:
-            stor_daily = storage_df.groupby("usage_date", as_index=False).agg(
-                active=("estimated_active_cost_usd", "sum"),
-                failsafe=("estimated_failsafe_cost_usd", "sum"),
-                stage=("estimated_stage_cost_usd", "sum"),
+    storage_section = section_open("Storage Costs")
+    with storage_section:
+        stor_mtd = storage_df[storage_df["usage_date"] >= first_day]
+        storage_mtd_total = float(stor_mtd["estimated_storage_cost_usd"].sum()) if not stor_mtd.empty else 0.0
+        storage_window_total = float(storage_df["estimated_storage_cost_usd"].sum())
+        left_s, right_s = st.columns([2, 1], gap="large")
+        with left_s:
+            if storage_window_total <= 0:
+                st.info("No nonzero storage cost found in the selected window. Small fresh accounts can legitimately round to $0 at the current TB/month rate.")
+            elif PLOTLY:
+                stor_daily = storage_df.groupby("usage_date", as_index=False).agg(
+                    active=("estimated_active_cost_usd", "sum"),
+                    failsafe=("estimated_failsafe_cost_usd", "sum"),
+                    stage=("estimated_stage_cost_usd", "sum"),
+                )
+                fig_s = go.Figure()
+                if float(stor_daily["active"].abs().sum()) > 0:
+                    fig_s.add_trace(
+                        go.Scatter(
+                            x=stor_daily["usage_date"],
+                            y=stor_daily["active"],
+                            stackgroup="one",
+                            name="Active",
+                            line=dict(color="#2dd4bf", width=1.8),
+                            fillcolor="rgba(45,212,191,0.16)",
+                            hovertemplate="Active: $%{y:,.0f} on %{x|%b %d}<extra></extra>",
+                        )
+                    )
+                if float(stor_daily["failsafe"].abs().sum()) > 0:
+                    fig_s.add_trace(
+                        go.Scatter(
+                            x=stor_daily["usage_date"],
+                            y=stor_daily["failsafe"],
+                            stackgroup="one",
+                            name="Failsafe",
+                            line=dict(color="#8b949e", width=1.4),
+                            fillcolor="rgba(139,148,158,0.16)",
+                            hovertemplate="Failsafe: $%{y:,.0f} on %{x|%b %d}<extra></extra>",
+                        )
+                    )
+                if float(stor_daily["stage"].abs().sum()) > 0:
+                    fig_s.add_trace(
+                        go.Scatter(
+                            x=stor_daily["usage_date"],
+                            y=stor_daily["stage"],
+                            stackgroup="one",
+                            name="Stage",
+                            line=dict(color="#c9d1d9", width=1.4),
+                            fillcolor="rgba(201,209,217,0.12)",
+                            hovertemplate="Stage: $%{y:,.0f} on %{x|%b %d}<extra></extra>",
+                        )
+                    )
+                apply_chart_theme(fig_s)
+                fig_s.update_layout(
+                    height=300,
+                    hovermode="x unified",
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0),
+                )
+                fig_s.update_yaxes(tickprefix="$", separatethousands=True)
+                st.plotly_chart(fig_s, use_container_width=True, config={"displayModeBar": False})
+            else:
+                st.dataframe(storage_df.head(rows_to_show), hide_index=True)
+        with right_s:
+            kpi("Storage (MTD)", fmt_usd(storage_mtd_total), f"Through {today.strftime('%b %d')}")
+            top_dbs = (
+                storage_df.groupby("database_name", as_index=False)["estimated_storage_cost_usd"]
+                .sum()
+                .sort_values("estimated_storage_cost_usd", ascending=False)
+                .head(rows_to_show)
             )
-            import plotly.graph_objects as go
-            fig_s = go.Figure()
-            if float(stor_daily["active"].abs().sum()) > 0:
-                fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["active"],
-                                            stackgroup="one", name="Active"))
-            if float(stor_daily["failsafe"].abs().sum()) > 0:
-                fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["failsafe"],
-                                            stackgroup="one", name="Failsafe"))
-            if float(stor_daily["stage"].abs().sum()) > 0:
-                fig_s.add_trace(go.Scatter(x=stor_daily["usage_date"], y=stor_daily["stage"],
-                                            stackgroup="one", name="Stage"))
-            fig_s.update_layout(height=300, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified")
-            fig_s.update_yaxes(tickprefix="$", separatethousands=True, title="")
-            fig_s.update_xaxes(title="")
-            st.plotly_chart(fig_s, use_container_width=True)
-        else:
-            st.dataframe(storage_df.head(rows_to_show), hide_index=True)
-    with right_s:
-        kpi("Storage (MTD)", fmt_usd(storage_mtd_total), f"Through {today.strftime('%b %d')}")
-        top_dbs = (storage_df.groupby("database_name", as_index=False)["estimated_storage_cost_usd"]
-                   .sum().sort_values("estimated_storage_cost_usd", ascending=False).head(rows_to_show))
-        if not top_dbs.empty:
-            top_dbs["cost"] = top_dbs["estimated_storage_cost_usd"].apply(lambda x: fmt_usd(float(x)))
-            st.markdown("**Top databases by storage cost**")
-            st.dataframe(top_dbs[["database_name", "cost"]].rename(columns={"database_name": "Database", "cost": "Cost"}),
-                         hide_index=True, width="stretch")
-    st.divider()
+            if not top_dbs.empty:
+                top_dbs["cost"] = top_dbs["estimated_storage_cost_usd"].apply(lambda x: fmt_usd(float(x)))
+                st.markdown("**Top databases by storage cost**")
+                st.dataframe(
+                    top_dbs[["database_name", "cost"]].rename(columns={"database_name": "Database", "cost": "Cost"}),
+                    hide_index=True,
+                    width="stretch",
+                )
+    section_close()
+    st.markdown('<div class="spendscope-gap"></div>', unsafe_allow_html=True)
 elif not demo_mode:
     st.info("No live storage cost rows found. Check DATABASE_STORAGE_USAGE_HISTORY latency and the dbt build target.")
 
 # -------- Top Users (v3.0.0) -----------------------------------------------
 if not top_spenders_df.empty and "user_name" in top_spenders_df.columns:
-    st.markdown(
-        f'### Top Users <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
-        unsafe_allow_html=True,
-    )
-    ts = top_spenders_df.copy()
-    ts_agg = ts.groupby("user_name", as_index=False).agg(
-        queries=("query_count", "sum"),
-        runtime_hrs=("total_runtime_seconds", lambda x: round(x.sum() / 3600.0, 1)),
-        gb_scanned=("gb_scanned", "sum"),
-        est_cost=("estimated_cost_usd", "sum"),
-    )
-    has_cost = ts["has_cost_estimate"].any() if "has_cost_estimate" in ts.columns else False
-    sort_col = "est_cost" if has_cost else "runtime_hrs"
-    ts_agg = ts_agg.sort_values(sort_col, ascending=False).head(rows_to_show).reset_index(drop=True)
-    ts_agg["queries"] = ts_agg["queries"].astype(int)
-    ts_agg["gb_scanned"] = ts_agg["gb_scanned"].round(1)
-    display_cols = {"user_name": "User", "queries": "Queries", "runtime_hrs": "Runtime (hrs)", "gb_scanned": "GB Scanned"}
-    if has_cost:
-        ts_agg["est_cost_fmt"] = ts_agg["est_cost"].apply(lambda x: fmt_usd(float(x), 2) if pd.notnull(x) else "-")
-        display_cols["est_cost_fmt"] = "Est. Cost"
-    ts_display = ts_agg.rename(columns=display_cols)
-    st.dataframe(ts_display[list(display_cols.values())], hide_index=True, width="stretch")
-    if not has_cost:
-        st.caption("Cost estimates require Pro pack. Showing volume metrics only.")
-    st.divider()
+    top_users_section = section_open("Top Users")
+    with top_users_section:
+        ts = top_spenders_df.copy()
+        ts_agg = ts.groupby("user_name", as_index=False).agg(
+            queries=("query_count", "sum"),
+            runtime_hrs=("total_runtime_seconds", lambda x: round(x.sum() / 3600.0, 1)),
+            gb_scanned=("gb_scanned", "sum"),
+            est_cost=("estimated_cost_usd", "sum"),
+        )
+        has_cost = ts["has_cost_estimate"].any() if "has_cost_estimate" in ts.columns else False
+        sort_col = "est_cost" if has_cost else "runtime_hrs"
+        ts_agg = ts_agg.sort_values(sort_col, ascending=False).head(rows_to_show).reset_index(drop=True)
+        ts_agg["queries"] = ts_agg["queries"].astype(int)
+        ts_agg["gb_scanned"] = ts_agg["gb_scanned"].round(1)
+        display_cols = {"user_name": "User", "queries": "Queries", "runtime_hrs": "Runtime (hrs)", "gb_scanned": "GB Scanned"}
+        if has_cost:
+            ts_agg["est_cost_fmt"] = ts_agg["est_cost"].apply(lambda x: fmt_usd(float(x), 2) if pd.notnull(x) else "-")
+            display_cols["est_cost_fmt"] = "Est. Cost"
+        ts_display = ts_agg.rename(columns=display_cols)
+        st.dataframe(ts_display[list(display_cols.values())], hide_index=True, width="stretch")
+        if not has_cost:
+            st.caption("Cost estimates require Pro pack. Showing volume metrics only.")
+    section_close()
+    st.markdown('<div class="spendscope-gap"></div>', unsafe_allow_html=True)
 
 # -------- Spend by Department ----------------------------------------------
-st.markdown(
-    f'### Spend by Department <span class="section-help"><a href="{DOCS_URL}" target="_blank">ⓘ</a></span>',
-    unsafe_allow_html=True,
-)
-deps = sorted(dept["department"].unique()) if ("department" in dept and not dept.empty) else []
-sel_key = f"sel_depts_{active_schema(demo_mode)}"
-default_sel: List[str] = st.session_state.get(sel_key, deps)
-default_sel = [d for d in default_sel if d in deps] or deps
-sel = st.multiselect("Departments", options=deps, default=default_sel, key=sel_key, help="Changes the lines below")
+department_section = section_open("Spend by Department")
+with department_section:
+    st.caption(f"Primary series reflects the highest-spend department over the last {days_shown} days.")
+    deps = sorted(dept["department"].unique()) if ("department" in dept and not dept.empty) else []
+    if not dept.empty and "usage_date" in dept.columns and deps:
+        dcur = dept[(dept["usage_date"] >= today - dt.timedelta(days=days_shown - 1)) & (dept["usage_date"] < today)].copy()
+        plot_df = dcur.rename(columns={"usage_date": "date", "total_cost_usd": "usd"}).copy()
+        if PLOTLY and not plot_df.empty:
+            totals = plot_df.groupby("department", as_index=False)["usd"].sum().sort_values("usd", ascending=False)
+            primary_department = str(totals.iloc[0]["department"])
+            fig = go.Figure()
+            for dept_name in totals["department"]:
+                series = plot_df[plot_df["department"] == dept_name].sort_values("date")
+                is_primary = dept_name == primary_department
+                fig.add_trace(
+                    go.Scatter(
+                        x=series["date"],
+                        y=series["usd"],
+                        mode="lines",
+                        name=str(dept_name),
+                        line=dict(color="#2dd4bf" if is_primary else "#3a3f47", width=3 if is_primary else 1),
+                        opacity=1.0 if is_primary else 0.6,
+                        hovertemplate=f"{dept_name}: $%{{y:,.0f}} on %{{x|%b %d}}<extra></extra>",
+                        showlegend=False,
+                    )
+                )
+                if is_primary and not series.empty:
+                    fig.add_trace(
+                        go.Scatter(
+                            x=[series.iloc[-1]["date"]],
+                            y=[series.iloc[-1]["usd"]],
+                            mode="markers",
+                            marker=dict(size=7, color="#2dd4bf"),
+                            hoverinfo="skip",
+                            showlegend=False,
+                        )
+                    )
+            apply_chart_theme(fig)
+            fig.update_layout(height=360, hovermode="x unified", showlegend=False)
+            fig.update_yaxes(tickprefix="$", separatethousands=True)
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
-if not dept.empty and "usage_date" in dept.columns and deps:
-    # last fully completed day
-    dcur = dept[(dept["usage_date"] >= today - dt.timedelta(days=days_shown - 1)) & (dept["usage_date"] < today)].copy()
-    if sel:
-        dcur = dcur[dcur["department"].isin(sel)]
-    plot_df = dcur.rename(columns={"usage_date": "date", "total_cost_usd": "usd"}).copy()
-    if PLOTLY and not plot_df.empty:
-        fig = px.line(plot_df, x="date", y="usd", color="department")
-        fig.update_traces(mode="lines+markers", marker=dict(size=4))
-        fig.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10), hovermode="x unified", legend_title_text="Department")
-        fig.update_yaxes(tickprefix="$", separatethousands=True, title="")
-        fig.update_xaxes(title="")
-        st.plotly_chart(fig, width="stretch")
+            legend_items = []
+            for dept_name in totals["department"]:
+                primary_class = " legend-pill-primary" if dept_name == primary_department else ""
+                legend_items.append(
+                    f'<span class="legend-pill{primary_class}"><span class="legend-dot"></span>{html.escape(str(dept_name))}</span>'
+                )
+            st.markdown(f'<div class="legend-pills">{"".join(legend_items)}</div>', unsafe_allow_html=True)
+        else:
+            agg = plot_df.groupby("date", as_index=False)["usd"].sum().set_index("date")
+            st.line_chart(agg, height=300)
     else:
-        agg = plot_df.groupby("date", as_index=False)["usd"].sum().set_index("date")
-        st.line_chart(agg, height=300)
-else:
-    st.info("No department data.")
-
-st.divider()
+        st.info("No department data.")
+section_close()
+st.markdown('<div class="spendscope-gap"></div>', unsafe_allow_html=True)
 
 # -------- Top tables --------------------------------------------------------
 def compute_budget_delta_window(days: int) -> pd.DataFrame:
