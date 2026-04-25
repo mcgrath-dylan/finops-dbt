@@ -24,10 +24,29 @@ STYLES = """
   --sidebar-width: 300px;
 }
 
-[data-testid="stToolbar"], [data-testid="stDecoration"],
-[data-testid="stStatusWidget"], [data-testid="stHeader"],
+[data-testid="stDecoration"],
+[data-testid="stStatusWidget"],
 [data-testid="stAppDeployButton"], #MainMenu, footer {
   display: none !important;
+}
+
+[data-testid="stHeader"],
+[data-testid="stToolbar"] {
+  background: transparent !important;
+}
+
+[data-testid="stToolbar"] {
+  pointer-events: none;
+}
+
+[data-testid="stToolbar"] button {
+  display: none !important;
+}
+
+[data-testid="stToolbar"] [data-testid="stExpandSidebarButton"],
+[data-testid="stToolbar"] [data-testid="stExpandSidebarButton"] button {
+  display: inline-flex !important;
+  pointer-events: auto;
 }
 
 [data-testid="stAppViewContainer"] > .main {
@@ -129,6 +148,29 @@ a:hover {
   color: var(--text-3);
   font-size: var(--fs-caption);
   line-height: 1.45;
+}
+
+.spendscope-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 22px;
+}
+
+.spendscope-page-title {
+  color: var(--text-1);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: var(--lh-tight);
+}
+
+.spendscope-page-subtitle {
+  color: var(--text-3);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  margin-top: 0.35rem;
 }
 
 .mode-pill {

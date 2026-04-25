@@ -39,8 +39,10 @@ except Exception:
 
 try:
     import snowflake.connector as sf
-except Exception:
+    SF_IMPORT_ERROR = ""
+except Exception as exc:
     sf = None  # type: ignore
+    SF_IMPORT_ERROR = f"{type(exc).__name__}: {exc}"
 
 # -------- helpers -----------------------------------------------------------
 def env_bool(name: str, default: bool = False) -> bool:
@@ -54,6 +56,7 @@ DEV_MODE = env_bool("DEV_MODE", False)
 st.set_page_config(
     page_title="Spendscope \u2014 Snowflake spend optimization with dbt",
     layout="wide",
+    initial_sidebar_state="expanded",
     menu_items={"Get Help": None, "Report a bug": None, "About": None},
 )
 
@@ -108,6 +111,36 @@ def clear_all_caches():
     except Exception:
         pass
 
+DATA_ERRORS_KEY = "spendscope_data_errors"
+
+def reset_data_errors():
+    st.session_state[DATA_ERRORS_KEY] = {}
+
+def record_data_error(scope: str, exc: object):
+    message = str(exc).replace("\n", " ").strip()
+    if not message:
+        message = "Unknown Snowflake data error."
+    if len(message) > 240:
+        message = f"{message[:237]}..."
+    errors = st.session_state.setdefault(DATA_ERRORS_KEY, {})
+    errors[str(scope)] = message
+
+def get_data_errors() -> Dict[str, str]:
+    return dict(st.session_state.get(DATA_ERRORS_KEY, {}))
+
+def data_error_for(*needles: str) -> Optional[str]:
+    errors = get_data_errors()
+    for needle in needles:
+        needle_l = needle.lower()
+        for scope, message in errors.items():
+            if needle_l in str(scope).lower():
+                return message
+    if "snowflake_connection" in errors:
+        return errors["snowflake_connection"]
+    if "snowflake_import" in errors:
+        return errors["snowflake_import"]
+    return None
+
 # -------- Snowflake ---------------------------------------------------------
 @st.cache_data(show_spinner=False)
 def get_conn_params() -> Dict[str, str]:
@@ -127,6 +160,7 @@ def active_schema(demo: bool) -> str:
 def _raw_connect():
     cp = get_conn_params()
     if sf is None:
+        record_data_error("snowflake_import", f"Snowflake connector unavailable: {SF_IMPORT_ERROR or 'import failed'}")
         return None
     try:
         return sf.connect(
@@ -138,7 +172,8 @@ def _raw_connect():
             database=cp["database"],
             schema=cp["schema"],
         )
-    except Exception:
+    except Exception as exc:
+        record_data_error("snowflake_connection", f"{type(exc).__name__}: {exc}")
         return None
 
 def connect():
@@ -151,16 +186,20 @@ def connect():
     except Exception:
         pass
     conn = _raw_connect()
+    if conn is None:
+        record_data_error("snowflake_connection", "Snowflake connection unavailable.")
     st.session_state[key] = conn
     return conn
 
 @st.cache_data(show_spinner=False)
 def run_query(sql: str, cache_key: Optional[str] = None) -> pd.DataFrame:
-    _ = cache_key
+    scope = cache_key or "snowflake_query"
     if sf is None:
+        record_data_error(scope, f"Snowflake connector unavailable: {SF_IMPORT_ERROR or 'import failed'}")
         return pd.DataFrame()
     conn = connect()
     if conn is None:
+        record_data_error(scope, "Snowflake connection unavailable.")
         return pd.DataFrame()
     cur = None
     try:
@@ -169,7 +208,8 @@ def run_query(sql: str, cache_key: Optional[str] = None) -> pd.DataFrame:
         cols = [c[0] for c in cur.description] if cur.description else []
         rows = cur.fetchall()
         return pd.DataFrame(rows, columns=cols)
-    except Exception:
+    except Exception as exc:
+        record_data_error(scope, f"{type(exc).__name__}: {exc}")
         return pd.DataFrame()
     finally:
         try:
@@ -575,7 +615,40 @@ with st.sidebar:
     if demo_mode:
         st.caption("Demo data \u2022 not a real Snowflake account")
 
+def render_page_header(demo: bool):
+    mode_class = "mode-pill-demo" if demo else "mode-pill-live"
+    mode_label = "DEMO" if demo else "LIVE"
+    st.markdown(
+        (
+            '<div class="spendscope-page-header">'
+            "<div>"
+            '<div class="spendscope-page-title">Spendscope</div>'
+            '<div class="spendscope-page-subtitle">Snowflake spend optimization with dbt</div>'
+            "</div>"
+            f'<span class="mode-pill {mode_class}">{mode_label}</span>'
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+def critical_demo_data_issues(fct_df: pd.DataFrame, dept_df: pd.DataFrame) -> List[Dict[str, str]]:
+    cp = get_conn_params()
+    db = cp.get("database", "") or "-"
+    sch = active_schema(True)
+    checks = [
+        ("fct_daily_costs", fct_df, ("fct:", "fct_daily_costs")),
+        ("fct_cost_by_department", dept_df, ("dept:", "fct_cost_by_department")),
+    ]
+    issues = []
+    for table, df, needles in checks:
+        if df is not None and not df.empty:
+            continue
+        detail = data_error_for(*needles) or f"No rows returned from {db}.{sch}.{table}."
+        issues.append({"table": table, "detail": detail})
+    return issues
+
 # -------- data & metrics ----------------------------------------------------
+reset_data_errors()
 fct, dept, fresh = load_models(demo_mode, days_shown)
 budget = load_budget(demo_mode)
 bva_latest = load_budget_vs_actual_latest(demo_mode)
@@ -583,6 +656,17 @@ forecast_df = load_forecast(demo_mode)
 storage_df = load_storage_costs(demo_mode, days_shown)
 top_spenders_df = load_top_spenders(demo_mode, days_shown)
 total_cost_df = load_total_cost_summary(demo_mode)
+
+render_page_header(demo_mode)
+demo_issues = critical_demo_data_issues(fct, dept) if demo_mode else []
+if demo_issues:
+    st.error("Demo data unavailable. The app did not receive the required Snowflake demo marts.")
+    for issue in demo_issues:
+        st.markdown(f"- `{html.escape(issue['table'])}`: {html.escape(issue['detail'])}")
+    if st.button("Retry data load"):
+        clear_all_caches()
+        st.rerun()
+    st.stop()
 
 today = dt.date.today()
 first_day = today.replace(day=1)
@@ -1350,6 +1434,31 @@ def diag_entry(name: str, df: Optional[pd.DataFrame], date_col: Optional[str] = 
         status = "✅"
     elif demo_mode:
         latest = "Demo data"
+    return {"Table": name, "Status": status, "Latest usage_date": latest}
+
+def diag_entry(name: str, df: Optional[pd.DataFrame], date_col: Optional[str] = None, explicit_date: Optional[dt.date] = None) -> Dict[str, str]:
+    status = "Missing"
+    latest = "No rows"
+    needles = [name]
+    if name == "fct_daily_costs":
+        needles.append("fct:")
+    elif name == "fct_cost_by_department":
+        needles.append("dept:")
+    error = data_error_for(*needles)
+    if df is not None and not df.empty and date_col and date_col in df.columns:
+        try:
+            series = pd.to_datetime(df[date_col], errors="coerce").dropna()
+            if not series.empty:
+                latest = series.max().date().isoformat()
+                status = "OK"
+        except Exception:
+            pass
+    elif explicit_date:
+        latest = explicit_date.isoformat()
+        status = "OK"
+    elif error:
+        latest = f"Error: {error}"
+        status = "Error"
     return {"Table": name, "Status": status, "Latest usage_date": latest}
 
 diag_rows.append(diag_entry("fct_daily_costs", fct, "usage_date"))
