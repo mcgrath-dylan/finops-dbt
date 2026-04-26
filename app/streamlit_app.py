@@ -27,9 +27,9 @@ except ModuleNotFoundError:
     from styles import STYLES
 
 try:
-    from app.components import apply_chart_theme, inline_stat_strip, kpi_hero, ranked_list, section_close, section_open
+    from app.components import apply_chart_theme, inline_stat_strip, kpi_hero, kpi_tile, ranked_list, section_close, section_open
 except ModuleNotFoundError:
-    from components import apply_chart_theme, inline_stat_strip, kpi_hero, ranked_list, section_close, section_open
+    from components import apply_chart_theme, inline_stat_strip, kpi_hero, kpi_tile, ranked_list, section_close, section_open
 
 try:
     import plotly.graph_objects as go
@@ -63,6 +63,7 @@ st.set_page_config(
 PRO_DATABASE = (os.getenv("PRO_DATABASE") or "").strip()
 PRO_SCHEMA = (os.getenv("PRO_SCHEMA") or "").strip()
 PRO_PACK_FLAG = env_bool("ENABLE_PRO_PACK", False)
+OFF_BUDGET_THRESHOLD_PCT = 5.0
 
 def lc(df: Optional[pd.DataFrame]) -> pd.DataFrame:
     if df is None or df.empty:
@@ -399,6 +400,34 @@ def load_budget_vs_actual_latest(demo: bool) -> Optional[dt.date]:
     return None
 
 @st.cache_data(ttl=60, show_spinner=False)
+def load_budget_vs_actual_mtd(demo: bool) -> pd.DataFrame:
+    cp = get_conn_params()
+    db = cp.get("database", "")
+    sch = active_schema(demo)
+    if sf is None or not sch:
+        return pd.DataFrame(columns=["usage_date", "department", "actual_cost_usd", "budget_usd"])
+
+    df = lc(
+        run_query(
+            f"""
+        select usage_date, department, actual_cost_usd, budget_usd
+        from {db}.{sch}.fct_budget_vs_actual
+        where usage_date >= date_trunc('month', current_date())
+          and usage_date <= current_date()
+        order by usage_date, department
+    """,
+            cache_key=f"bva_mtd:{db}.{sch}",
+        )
+    )
+    required = {"usage_date", "department", "actual_cost_usd", "budget_usd"}
+    if df.empty or not required.issubset(set(df.columns)):
+        return pd.DataFrame(columns=["usage_date", "department", "actual_cost_usd", "budget_usd"])
+    df["usage_date"] = pd.to_datetime(df["usage_date"]).dt.date
+    df["department"] = df["department"].astype(str).str.strip()
+    df = to_float(df, ["actual_cost_usd", "budget_usd"])
+    return df[["usage_date", "department", "actual_cost_usd", "budget_usd"]]
+
+@st.cache_data(ttl=60, show_spinner=False)
 def load_forecast(demo: bool) -> pd.DataFrame:
     cp = get_conn_params()
     db = cp["database"]
@@ -652,6 +681,7 @@ reset_data_errors()
 fct, dept, fresh = load_models(demo_mode, days_shown)
 budget = load_budget(demo_mode)
 bva_latest = load_budget_vs_actual_latest(demo_mode)
+bva_mtd = load_budget_vs_actual_mtd(demo_mode)
 forecast_df = load_forecast(demo_mode)
 storage_df = load_storage_costs(demo_mode, days_shown)
 top_spenders_df = load_top_spenders(demo_mode, days_shown)
@@ -837,8 +867,61 @@ elif variance_value is not None and variance_pct is not None:
 elif variance_value is not None:
     variance_note = "vs actual spend"
 
+def build_off_budget_dept_tile(bva_df: pd.DataFrame):
+    fallback = (
+        "All depts on budget",
+        "No department budget rows",
+        "fct_budget_vs_actual returned no MTD rows",
+        None,
+    )
+    required = {"department", "actual_cost_usd", "budget_usd"}
+    if bva_df is None or bva_df.empty or not required.issubset(set(bva_df.columns)):
+        return fallback
+
+    grouped = (
+        bva_df.groupby("department", as_index=False)[["actual_cost_usd", "budget_usd"]]
+        .sum()
+        .copy()
+    )
+    grouped = grouped[grouped["budget_usd"] > 0].copy()
+    if grouped.empty:
+        return (
+            "All depts on budget",
+            "No positive MTD budgets",
+            "fct_budget_vs_actual has no budget baseline",
+            None,
+        )
+
+    grouped["delta_usd"] = grouped["actual_cost_usd"] - grouped["budget_usd"]
+    grouped["delta_pct"] = grouped["delta_usd"] / grouped["budget_usd"] * 100.0
+    grouped["abs_delta_pct"] = grouped["delta_pct"].abs()
+
+    off_budget = grouped[grouped["abs_delta_pct"] > OFF_BUDGET_THRESHOLD_PCT].copy()
+    if not off_budget.empty:
+        row = off_budget.sort_values("abs_delta_pct", ascending=False).iloc[0]
+        delta_pct = float(row["delta_pct"])
+        delta_usd = float(row["delta_usd"])
+        budget_usd = float(row["budget_usd"])
+        tone = "danger" if delta_pct > 0 else "success" if delta_pct < 0 else None
+        direction = "over" if delta_usd > 0 else "under" if delta_usd < 0 else "vs"
+        if direction == "vs":
+            caption = f"{fmt_usd(delta_usd)} vs {fmt_usd(budget_usd)} MTD budget"
+        else:
+            caption = f"{fmt_usd(abs(delta_usd))} {direction} {fmt_usd(budget_usd)} MTD budget"
+        return str(row["department"]), f"{delta_pct:+.0f}% vs MTD budget", caption, tone
+
+    row = grouped.sort_values("abs_delta_pct", ascending=True).iloc[0]
+    delta_pct = float(row["delta_pct"])
+    delta_usd = float(row["delta_usd"])
+    return (
+        "All depts on budget",
+        f"{row['department']} at {delta_pct:+.0f}% vs {fmt_usd(float(row['budget_usd']))}",
+        f"{fmt_usd(abs(delta_usd))} from MTD budget",
+        None,
+    )
+
 hero_end = today - dt.timedelta(days=1)
-hero_start = hero_end - dt.timedelta(days=29)
+hero_start = hero_end - dt.timedelta(days=max(days_shown, 1) - 1)
 hero_window = (
     fct[(fct["usage_date"] >= hero_start) & (fct["usage_date"] <= hero_end)].copy()
     if not fct.empty
@@ -869,21 +952,26 @@ if variance_value is not None and variance_pct is not None:
 elif variance_value is not None:
     variance_strip_value = variance_value_disp
 
-hero_support = "Compute spend unavailable for the last 30 days"
+hero_support = "Compute spend unavailable"
 if hero_idle_share is not None:
-    hero_support = f"{hero_idle_share:.0f}% of compute spend over the last 30 days"
+    hero_support = f"{hero_idle_share:.0f}% of compute spend"
+
+off_budget_name, off_budget_subline, off_budget_caption, off_budget_tone = build_off_budget_dept_tile(bva_mtd)
 
 if not demo_mode and mtd_total <= 0:
     st.info("No live compute spend found in the current month. Check ACCOUNT_USAGE lag, warehouse mapping, and whether the workload warehouse has metering history.")
 
-hero_cols = st.columns([3, 2], gap="large")
+hero_cols = st.columns([1, 1, 1], gap="large")
 with hero_cols[0]:
-    kpi_hero(
-        "Idle Wasted",
-        fmt_usd(hero_idle_total) if hero_has_idle else "—",
-        hero_support,
-        "Warehouses running without queries — reclaimable with auto-suspend tuning",
-    )
+    idle_section = section_open("")
+    with idle_section:
+        kpi_tile(
+            "IDLE WASTED",
+            fmt_usd(hero_idle_total) if hero_has_idle else "\u2014",
+            hero_support,
+            "warehouses running without queries",
+        )
+    section_close()
 with hero_cols[1]:
     donut_section = section_open("Compute vs. Storage")
     with donut_section:
@@ -908,13 +996,25 @@ with hero_cols[1]:
                 ]
             )
             apply_chart_theme(fig_tc)
-            fig_tc.update_layout(height=292, showlegend=False)
-            st.plotly_chart(fig_tc, use_container_width=True, config={"displayModeBar": False})
+            fig_tc.update_layout(height=232, width=280, showlegend=False)
+            st.plotly_chart(fig_tc, use_container_width=False, config={"displayModeBar": False})
+            st.markdown('<div class="hero-donut-caption">MTD service mix</div>', unsafe_allow_html=True)
         else:
             st.markdown(
                 '<div class="spendscope-empty">No compute or storage spend is available for the current month.</div>',
                 unsafe_allow_html=True,
             )
+    section_close()
+with hero_cols[2]:
+    off_budget_section = section_open("")
+    with off_budget_section:
+        kpi_tile(
+            "OFF-BUDGET DEPT",
+            off_budget_name,
+            off_budget_subline,
+            off_budget_caption,
+            tone=off_budget_tone,
+        )
     section_close()
 
 inline_stat_strip(

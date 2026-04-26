@@ -47,8 +47,14 @@ def fake_query(sql):
             rows.append((day, "Analytics", 70.0))
             rows.append((day, "Data Platform", 45.0))
         return ["date", "department", "budget_usd"], rows
-    if "fct_budget_vs_actual" in query:
+    if "fct_budget_vs_actual" in query and "max(usage_date)" in query:
         return ["usage_date"], [(dates[0],)]
+    if "fct_budget_vs_actual" in query:
+        rows = []
+        for day in dates:
+            rows.append((day, "Analytics", 110.0, 90.0))
+            rows.append((day, "Data Platform", 40.0, 45.0))
+        return ["usage_date", "department", "actual_cost_usd", "budget_usd"], rows
     if "fct_cost_forecast" in query:
         rows = [
             (today + dt.timedelta(days=i), "COMPUTE_WH", 95.0, 80.0, 115.0, i)
@@ -197,7 +203,9 @@ class AppRegressionTests(unittest.TestCase):
         self.assertEqual(payload["exceptions"], [])
         self.assertIn("Demo data did not load", rendered_text)
         self.assertIn("Retry data load", payload["buttons"])
-        self.assertIn("Idle Wasted", rendered_text)
+        self.assertIn("IDLE WASTED", rendered_text)
+        self.assertIn("OFF-BUDGET DEPT", rendered_text)
+        self.assertIn("Compute vs. Storage", rendered_text)
         self.assertIn("Top Departments", rendered_text)
 
     def test_stubbed_nonempty_demo_data_renders_core_surfaces(self):
@@ -205,7 +213,9 @@ class AppRegressionTests(unittest.TestCase):
         rendered_text = "\n".join(payload["markdown"] + payload["errors"] + payload["warnings"])
         self.assertEqual(payload["exceptions"], [])
         self.assertNotIn("Demo data did not load", rendered_text)
-        self.assertIn("Idle Wasted", rendered_text)
+        self.assertIn("IDLE WASTED", rendered_text)
+        self.assertIn("OFF-BUDGET DEPT", rendered_text)
+        self.assertIn("Compute vs. Storage", rendered_text)
         self.assertIn("Top Departments", rendered_text)
         self.assertIn("Analytics", rendered_text)
 

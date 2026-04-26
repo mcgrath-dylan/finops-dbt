@@ -2,6 +2,7 @@ STYLES = """
 <style>
 :root {
   --fs-hero-value: 2.6rem;
+  --fs-hero-tile-value: 1.7rem;
   --fs-section-h: 0.95rem;
   --fs-kpi-value: 1.35rem;
   --fs-kpi-title: 0.78rem;
@@ -272,6 +273,53 @@ a:hover {
   margin-top: 0.55rem;
 }
 
+.hero-tile {
+  min-height: 170px;
+}
+
+.hero-tile-value {
+  color: var(--text-1);
+  font-size: var(--fs-hero-tile-value);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: var(--lh-tight);
+  margin: 0.72rem 0 0.65rem;
+}
+
+.hero-tile-subline {
+  color: var(--text-2);
+  font-size: var(--fs-body);
+  line-height: 1.45;
+}
+
+.hero-tile-subline-success {
+  color: var(--success);
+}
+
+.hero-tile-subline-danger {
+  color: var(--danger);
+}
+
+.hero-tile-caption {
+  color: var(--text-3);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  margin-top: 0.45rem;
+}
+
+.hero-donut {
+  max-width: 280px;
+  margin: 0 auto;
+}
+
+.hero-donut-caption {
+  color: var(--text-3);
+  font-size: var(--fs-caption);
+  line-height: 1.5;
+  margin-top: 0.25rem;
+  text-align: center;
+}
+
 .spendscope-context {
   color: var(--text-3);
   font-size: var(--fs-caption);
@@ -322,7 +370,8 @@ a:hover {
   margin-bottom: 14px;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.spendscope-section-title) {
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.spendscope-section-title),
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hero-tile) {
   background: var(--bg-section) !important;
   border: 1px solid var(--border) !important;
   border-radius: 10px !important;
@@ -330,7 +379,8 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.spendscope-section-title) {
   padding: 24px 28px !important;
 }
 
-div[data-testid="stVerticalBlockBorderWrapper"]:has(.spendscope-section-title) > div[data-testid="stVerticalBlock"] {
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.spendscope-section-title) > div[data-testid="stVerticalBlock"],
+div[data-testid="stVerticalBlockBorderWrapper"]:has(.hero-tile) > div[data-testid="stVerticalBlock"] {
   gap: 1rem;
 }
 
@@ -514,6 +564,10 @@ div[data-testid="stVerticalBlockBorderWrapper"]:has(.spendscope-section-title) >
 
   .hero-value {
     font-size: 2.2rem;
+  }
+
+  .hero-tile-value {
+    font-size: 1.55rem;
   }
 
   .inline-stat-strip {

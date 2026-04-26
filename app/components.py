@@ -5,11 +5,12 @@ import streamlit as st
 
 def section_open(title: str):
     section = st.container(border=True)
-    with section:
-        st.markdown(
-            f'<div class="spendscope-section-title">{html.escape(str(title))}</div>',
-            unsafe_allow_html=True,
-        )
+    if title:
+        with section:
+            st.markdown(
+                f'<div class="spendscope-section-title">{html.escape(str(title))}</div>',
+                unsafe_allow_html=True,
+            )
     return section
 
 
@@ -18,6 +19,7 @@ def section_close():
 
 
 def kpi_hero(title: str, value: str, support_line: str = "", caption: str = ""):
+    # Unused after the 2026-04-25 hero re-spec; kept for a future cleanup pass.
     support_html = f'<div class="hero-support">{html.escape(str(support_line))}</div>' if support_line else ""
     caption_html = f'<div class="hero-caption">{html.escape(str(caption))}</div>' if caption else ""
     st.markdown(
@@ -27,6 +29,21 @@ def kpi_hero(title: str, value: str, support_line: str = "", caption: str = ""):
             f'<div class="hero-value">{html.escape(str(value))}</div>'
             f"{support_html}"
             f"{caption_html}"
+            "</div>"
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+def kpi_tile(title: str, value: str, subline_1: str, subline_2: str, *, tone=None):
+    tone_class = f" hero-tile-subline-{tone}" if tone else ""
+    st.markdown(
+        (
+            '<div class="hero-tile">'
+            f'<div class="kpi-title">{html.escape(str(title))}</div>'
+            f'<div class="hero-tile-value">{html.escape(str(value))}</div>'
+            f'<div class="hero-tile-subline{tone_class}">{html.escape(str(subline_1))}</div>'
+            f'<div class="hero-tile-caption">{html.escape(str(subline_2))}</div>'
             "</div>"
         ),
         unsafe_allow_html=True,
