@@ -128,6 +128,7 @@ payload = {
     "toggle_values": [toggle.value for toggle in at.toggle],
     "markdown": [str(getattr(markdown, "value", "")) for markdown in at.markdown],
     "errors": [str(getattr(error, "value", "")) for error in at.error],
+    "warnings": [str(getattr(warning, "value", "")) for warning in at.warning],
     "buttons": [button.label for button in at.button],
 }
 print("RESULT_JSON=" + json.dumps(payload))
@@ -190,20 +191,20 @@ class AppRegressionTests(unittest.TestCase):
         self.assertIn(">Spendscope<", source)
         self.assertNotIn("## FinOps for Snowflake + dbt", source)
 
-    def test_demo_data_unavailable_state_renders_for_empty_critical_tables(self):
+    def test_empty_demo_data_warns_but_renders_shell(self):
         payload = self.run_apptest(demo_mode=True, stub_mode="empty")
-        rendered_text = "\n".join(payload["markdown"] + payload["errors"])
+        rendered_text = "\n".join(payload["markdown"] + payload["errors"] + payload["warnings"])
         self.assertEqual(payload["exceptions"], [])
-        self.assertIn("Demo data unavailable", rendered_text)
-        self.assertIn("fct_daily_costs", rendered_text)
-        self.assertIn("fct_cost_by_department", rendered_text)
+        self.assertIn("Demo data did not load", rendered_text)
         self.assertIn("Retry data load", payload["buttons"])
+        self.assertIn("Idle Wasted", rendered_text)
+        self.assertIn("Top Departments", rendered_text)
 
     def test_stubbed_nonempty_demo_data_renders_core_surfaces(self):
         payload = self.run_apptest(demo_mode=True, stub_mode="nonempty")
-        rendered_text = "\n".join(payload["markdown"] + payload["errors"])
+        rendered_text = "\n".join(payload["markdown"] + payload["errors"] + payload["warnings"])
         self.assertEqual(payload["exceptions"], [])
-        self.assertNotIn("Demo data unavailable", rendered_text)
+        self.assertNotIn("Demo data did not load", rendered_text)
         self.assertIn("Idle Wasted", rendered_text)
         self.assertIn("Top Departments", rendered_text)
         self.assertIn("Analytics", rendered_text)

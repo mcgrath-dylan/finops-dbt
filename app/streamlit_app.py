@@ -660,13 +660,13 @@ total_cost_df = load_total_cost_summary(demo_mode)
 render_page_header(demo_mode)
 demo_issues = critical_demo_data_issues(fct, dept) if demo_mode else []
 if demo_issues:
-    st.error("Demo data unavailable. The app did not receive the required Snowflake demo marts.")
-    for issue in demo_issues:
-        st.markdown(f"- `{html.escape(issue['table'])}`: {html.escape(issue['detail'])}")
+    st.warning(
+        "Demo data did not load. Demo mode is Snowflake-backed (FINOPS_DEV.DEMO); "
+        "see Advanced → Diagnostics for per-table errors."
+    )
     if st.button("Retry data load"):
         clear_all_caches()
         st.rerun()
-    st.stop()
 
 today = dt.date.today()
 first_day = today.replace(day=1)
@@ -1418,24 +1418,6 @@ def build_insights_csv() -> pd.DataFrame:
 budget_win = compute_budget_delta_window(days_shown)
 insights_df = build_insights_csv()
 diag_rows = []
-def diag_entry(name: str, df: Optional[pd.DataFrame], date_col: Optional[str] = None, explicit_date: Optional[dt.date] = None) -> Dict[str, str]:
-    status = "✗"
-    latest = "—"
-    if df is not None and not df.empty and date_col and date_col in df.columns:
-        try:
-            series = pd.to_datetime(df[date_col], errors="coerce").dropna()
-            if not series.empty:
-                latest = series.max().date().isoformat()
-                status = "✅"
-        except Exception:
-            pass
-    elif explicit_date:
-        latest = explicit_date.isoformat()
-        status = "✅"
-    elif demo_mode:
-        latest = "Demo data"
-    return {"Table": name, "Status": status, "Latest usage_date": latest}
-
 def diag_entry(name: str, df: Optional[pd.DataFrame], date_col: Optional[str] = None, explicit_date: Optional[dt.date] = None) -> Dict[str, str]:
     status = "Missing"
     latest = "No rows"
