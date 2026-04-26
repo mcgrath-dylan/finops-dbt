@@ -1021,7 +1021,7 @@ inline_stat_strip(
     [
         {"title": "MTD", "value": fmt_usd(mtd_total)},
         {"title": "Forecast", "value": fmt_usd(forecast_month)},
-        {"title": "Variance", "value": variance_strip_value, "tone": variance_strip_tone},
+        {"title": "Forecast \u0394", "value": variance_strip_value, "tone": variance_strip_tone},
     ]
 )
 st.markdown(

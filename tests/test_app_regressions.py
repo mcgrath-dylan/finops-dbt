@@ -206,6 +206,8 @@ class AppRegressionTests(unittest.TestCase):
         self.assertIn("IDLE WASTED", rendered_text)
         self.assertIn("OFF-BUDGET DEPT", rendered_text)
         self.assertIn("Compute vs. Storage", rendered_text)
+        self.assertIn("Forecast \u0394", rendered_text)
+        self.assertNotIn("Variance</span>", rendered_text)
         self.assertIn("Top Departments", rendered_text)
 
     def test_stubbed_nonempty_demo_data_renders_core_surfaces(self):
@@ -216,6 +218,8 @@ class AppRegressionTests(unittest.TestCase):
         self.assertIn("IDLE WASTED", rendered_text)
         self.assertIn("OFF-BUDGET DEPT", rendered_text)
         self.assertIn("Compute vs. Storage", rendered_text)
+        self.assertIn("Forecast \u0394", rendered_text)
+        self.assertNotIn("Variance</span>", rendered_text)
         self.assertIn("Top Departments", rendered_text)
         self.assertIn("Analytics", rendered_text)
 
