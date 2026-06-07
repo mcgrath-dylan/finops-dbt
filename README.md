@@ -10,6 +10,8 @@ Snowflake bills are hard to explain when compute, storage, forecasts, and depart
 
 Documentation: [mcgrath-dylan.github.io/finops-dbt/base/](https://mcgrath-dylan.github.io/finops-dbt/base/)
 
+> **Status — completed portfolio project (not actively maintained).** A finished Snowflake + dbt FinOps build: layered dbt modeling, contracts, tests, lineage, and a dashboard that stays honest about missing data. I'm no longer developing it as a product — the commercial thesis changed after I reviewed Snowflake's native cost tooling. The full reasoning is in [Why I stopped developing this](#why-i-stopped-developing-this) below.
+
 ## Screenshots
 
 <p>
@@ -160,16 +162,24 @@ Published dbt docs include model descriptions, column tests, and lineage:
 - Starter docs: [base docs](https://mcgrath-dylan.github.io/finops-dbt/base/)
 - GitHub Pages root: [finops-dbt docs](https://mcgrath-dylan.github.io/finops-dbt/)
 
+## Why I stopped developing this
+
+I built finops-dbt to find out if I could — to turn Snowflake's scattered cost views into modeled, tested, version-controlled analytics, and get real reps in dbt and Snowflake doing it. That part worked. There was also a commercial idea underneath: that "idle warehouse cost, in dollars" was a number Snowflake made you assemble yourself, worth packaging into a small product. (The bones of a launch post and a paid tier are still in the history.)
+
+Before shipping that, I checked the idea against what Snowflake ships natively today, and most of it is covered. Four of the seven marts map to native Cost Management; per-query cost attribution has been in `QUERY_ATTRIBUTION_HISTORY` since 2024; the idle-cost number is a one-line subtraction in Snowflake's own `WAREHOUSE_METERING_HISTORY` docs; and cost-anomaly detection went GA in December 2025.
+
+What's still not native is the thing this project actually is: a version-controlled, tested, lineage-tracked chargeback *pipeline* — daily-grain department budgets, CSV-based mapping for teams without tag-write access, and an explainable per-warehouse forecast, all as SQL surfaces other models can join. That gap is real, and I'd defend it. It just isn't enough of a wedge to keep building this as a standalone commercial product.
+
+So I stopped, and kept it as a portfolio piece. The learning was the point. The engineering carries over; the product idea doesn't. What survives is the craft — the layered modeling, the contracts and tests, the honest no-data states instead of fake zeros — and that's the signal a portfolio project is meant to send.
+
+### How this was built
+
+I used AI coding tools — Claude Code and Codex — to build this, and the commit history makes that obvious. They wrote a lot of the boilerplate and sped up the drafting. The calls that matter — how to layer the models, what to test, how to handle missing data, and when to stop — were mine. I'd rather say that here than have you find it in the git log.
+
 ## License
 
 Apache-2.0. See [LICENSE](LICENSE).
 
-## Consulting & Services
+## Contact
 
-finops-dbt is free and Apache-2.0. If your team wants it deployed and configured
-on your Snowflake account without the setup time, I offer three tiers: Quickstart,
-Full Implementation, and Advisory, starting at $3K.
-
-See [CONSULTING.md](CONSULTING.md) for pricing, scope, and contact details.
-
-Questions or implementation help: mcgrath.fintech@gmail.com
+This is a portfolio project demonstrating analytics-engineering practice on Snowflake cost data — not an actively sold or maintained service. Questions welcome: mcgrath.fintech@gmail.com
