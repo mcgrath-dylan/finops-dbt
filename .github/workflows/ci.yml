@@ -1,4 +1,4 @@
-name: PR - Parse, Compile & Test
+name: PR - Parse & Test
 
 permissions:
   contents: read
@@ -22,14 +22,6 @@ jobs:
     timeout-minutes: 20
     env:
       DBT_PROFILES_DIR: ./.ci/profiles
-      PRO_GH_PAT: ${{ secrets.PRO_GH_PAT }}
-      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
-      SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
-      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
-      SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
-      SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
-      SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
 
     steps:
       - uses: actions/checkout@v6
@@ -47,77 +39,12 @@ jobs:
       - name: Python regression tests
         run: python -m unittest discover -s tests
 
-      - name: Remove stale package lock (if any)
-        run: rm -f package-lock.yml
-
-      - name: Authenticate Git for private deps (conditional)
-        if: ${{ env.PRO_GH_PAT != '' }}
-        run: |
-          git config --global url."https://${PRO_GH_PAT}:@github.com/".insteadOf "https://github.com/"
-
-      - name: dbt deps (skip if no packages.yml)
-        if: hashFiles('packages.yml') != ''
+      # The demo profile supplies demo_* env_var fallbacks, so deps and parse
+      # need no Snowflake secrets. This project is retired: there is no live
+      # account to compile/test/freshness-check against, so CI validates that
+      # the dbt project still parses and the app logic still passes its tests.
+      - name: dbt deps
         run: dbt deps
 
       - name: dbt parse
         run: dbt parse
-
-      # --- Everything below requires a live Snowflake connection ---
-
-      - name: Check if Snowflake secrets are available
-        id: has_secrets
-        run: |
-          if [[ -n "$SNOWFLAKE_ACCOUNT" && -n "$SNOWFLAKE_USER" && -n "$SNOWFLAKE_PASSWORD" ]]; then
-            echo "available=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "available=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Snowflake secrets not configured - skipping compile, test, and freshness steps."
-          fi
-
-      - name: dbt compile
-        if: steps.has_secrets.outputs.available == 'true'
-        run: >
-          dbt compile
-          --target demo
-          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
-          --fail-fast
-
-      - name: dbt test
-        if: steps.has_secrets.outputs.available == 'true'
-        run: >
-          dbt test
-          --target demo
-          --vars '{"enable_pro_pack": false, "DEMO_MODE": true}'
-
-      - name: Source freshness
-        if: steps.has_secrets.outputs.available == 'true'
-        run: |
-          dbt source freshness --target live || true
-          if [[ -f target/sources.json ]]; then
-            cp target/sources.json freshness.json
-          fi
-
-      - name: Warn on freshness errors
-        if: steps.has_secrets.outputs.available == 'true'
-        run: |
-          if [[ ! -f freshness.json ]]; then
-            echo "::warning::freshness.json missing"
-            exit 0
-          fi
-          # TODO(2026-05-03): Re-enable strict freshness once trial account has baseline data
-          if jq -e '.results[] | select(.status=="error")' freshness.json >/dev/null; then
-            echo "::warning::Freshness errors detected for:"
-            jq -r '.results[] | select(.status=="error") | .unique_id' freshness.json
-          fi
-          if jq -e '.results[] | select(.status=="runtime error")' freshness.json >/dev/null; then
-            echo "::warning::Freshness runtime errors detected for:"
-            jq -r '.results[] | select(.status=="runtime error") | .unique_id' freshness.json
-          fi
-          exit 0
-
-      - name: Upload dbt artifacts
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: dbt-target
-          path: target/**
