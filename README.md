@@ -182,4 +182,3 @@ Apache-2.0. See [LICENSE](LICENSE).
 ## Contact
 
 This is a portfolio project demonstrating analytics-engineering practice on Snowflake cost data — not an actively sold or maintained service. Questions welcome: mcgrath.fintech@gmail.com
-                                                                                                                                                        

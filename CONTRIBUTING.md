@@ -29,4 +29,4 @@ Every PR must pass dbt parse. Snowflake-backed compile, build, test, and freshne
 
 ## Pull Requests
 
-Keep changes scoped to one feature or fix. Do not commit `.env`,
+Keep changes scoped to one feature or fix. Do not commit `.env`, local profiles, generated `target/` artifacts, or private package overrides. Note any live Snowflake validation gaps in the PR description.
