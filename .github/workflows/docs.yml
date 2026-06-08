@@ -92,7 +92,7 @@ jobs:
           fi
 
       - name: Upload docs artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dbt-docs
           path: |
