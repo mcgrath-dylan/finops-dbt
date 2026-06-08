@@ -3,7 +3,6 @@
 Snowflake bills are hard to explain when compute, storage, forecasts, and department budgets live in separate places. This dbt project turns `SNOWFLAKE.ACCOUNT_USAGE` into tested cost marts and a Streamlit dashboard so analytics teams can see what changed, who is driving usage, and where the month is likely to land.
 
 [![PR CI](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/ci.yml/badge.svg)](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/ci.yml)
-[![Nightly Docs](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/nightly.yml/badge.svg)](https://github.com/mcgrath-dylan/finops-dbt/actions/workflows/nightly.yml)
 ![dbt Core](https://img.shields.io/badge/dbt-1.11.x-informational)
 ![Python](https://img.shields.io/badge/Python-3.13-informational)
 ![License](https://img.shields.io/badge/License-Apache--2.0-blue)
@@ -93,7 +92,7 @@ make demo
 | Warehouse optimization recommendations |  | Yes |
 | Auto-clustering cost signals |  | Yes |
 
-Starter is Apache-2.0. The Pro add-on is licensed separately and is not required for this project to build.
+Starter is Apache-2.0. The Pro add-on is also Apache-2.0 (same license, separate repo) and is not required for this project to build.
 
 ## Architecture
 
@@ -183,3 +182,4 @@ Apache-2.0. See [LICENSE](LICENSE).
 ## Contact
 
 This is a portfolio project demonstrating analytics-engineering practice on Snowflake cost data — not an actively sold or maintained service. Questions welcome: mcgrath.fintech@gmail.com
+                                                                                                                                                        

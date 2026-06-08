@@ -1,5 +1,7 @@
 # Contributing
 
+> **Archived.** This project is no longer accepting contributions; the guide below is preserved as reference for anyone running it locally.
+
 ## Run Locally
 
 ```bash
@@ -27,4 +29,4 @@ Every PR must pass dbt parse. Snowflake-backed compile, build, test, and freshne
 
 ## Pull Requests
 
-Keep changes scoped to one feature or fix. Do not commit `.env`, local profiles, generated `target/` artifacts, or private package overrides. Note any live Snowflake validation gaps in the PR description.
+Keep changes scoped to one feature or fix. Do not commit `.env`,
